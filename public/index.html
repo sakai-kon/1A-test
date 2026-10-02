@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101827">
   <title>1A 合唱練習サイト</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <main class="container">
@@ -17,6 +17,11 @@
       </div>
       <button id="logout-button" class="ghost hidden">ログアウト</button>
     </header>
+
+    <section id="setup-warning" class="card warning hidden">
+      <h2>Cloudflare APIが未設定です</h2>
+      <p class="muted">GitHub Pagesの画面は公開できますが、ログインやデータ保存にはCloudflare WorkerのURL設定が必要です。</p>
+    </section>
 
     <section id="login-view" class="card">
       <h2>ログイン</h2>
@@ -91,11 +96,12 @@
       </div>
       <h3 class="message-title"></h3>
       <p class="message-body"></p>
-      <audio class="message-audio hidden" controls preload="metadata"></audio>
+      <audio class="message-audio hidden" controls preload="none"></audio>
       <button class="delete-button ghost" type="button">削除</button>
     </article>
   </template>
 
-  <script src="/app.js" defer></script>
+  <script src="./config.js"></script>
+  <script src="./app.js" defer></script>
 </body>
 </html>
