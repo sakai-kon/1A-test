@@ -333,12 +333,6 @@ $("#voice-file").addEventListener("change", async (event) => {
       return;
     }
 
-    if (durationMs > MAX_AUDIO_DURATION_MS) {
-      resetVoiceFile();
-      $("#recording-status").textContent = "60秒を超える音声はアップロードできません。";
-      return;
-    }
-
     selectedVoiceFile = file;
     $("#recording-preview").src = URL.createObjectURL(file);
     $("#recording-preview").classList.remove("hidden");
