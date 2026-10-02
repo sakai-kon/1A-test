@@ -1,30 +1,47 @@
-import type { D1Database, Fetcher, R2Bucket } from "@cloudflare/workers-types";
+import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
 
 interface Env {
   DB: D1Database;
   AUDIO: R2Bucket;
-  ASSETS: Fetcher;
   SITE_PASSWORD: string;
   SESSION_SECRET: string;
+  WEB_ORIGIN: string;
   SESSION_TTL_SECONDS?: string;
 }
 
 const SESSION_COOKIE = "choir_session";
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 const MAX_AUDIO_DURATION_MS = 60_000;
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 
-const json = (data: unknown, status = 200, extraHeaders: HeadersInit = {}) =>
+function corsHeaders(request: Request, env: Env): HeadersInit {
+  const origin = request.headers.get("Origin");
+  const allowed = origin && (
+    origin === env.WEB_ORIGIN ||
+    origin === "http://localhost:8787" ||
+    origin === "http://127.0.0.1:8787"
+  );
+
+  return {
+    "Access-Control-Allow-Origin": allowed ? origin : env.WEB_ORIGIN,
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin"
+  };
+}
+
+const json = (data: unknown, status = 200, extraHeaders: HeadersInit = {}, request?: Request, env?: Env) =>
   new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
+      ...(request && env ? corsHeaders(request, env) : {}),
       ...extraHeaders
     }
   });
-
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
 
 function base64UrlEncode(bytes: Uint8Array): string {
   let binary = "";
@@ -92,6 +109,12 @@ function getCookie(request: Request, name: string): string | null {
   return null;
 }
 
+function getBearerToken(request: Request): string | null {
+  const authorization = request.headers.get("Authorization") ?? "";
+  if (!authorization.startsWith("Bearer ")) return null;
+  return authorization.slice("Bearer ".length).trim() || null;
+}
+
 function sessionCookie(token: string, maxAge: number): string {
   return [
     SESSION_COOKIE + "=" + token,
@@ -104,12 +127,14 @@ function sessionCookie(token: string, maxAge: number): string {
 }
 
 async function isAuthed(request: Request, env: Env): Promise<boolean> {
+  const bearer = getBearerToken(request);
+  if (await verifySession(env, bearer)) return true;
   return verifySession(env, getCookie(request, SESSION_COOKIE));
 }
 
 async function requireAuth(request: Request, env: Env): Promise<Response | null> {
   if (await isAuthed(request, env)) return null;
-  return json({ error: "ログインが必要です。" }, 401);
+  return json({ error: "ログインが必要です。" }, 401, {}, request, env);
 }
 
 function cleanText(value: unknown, maxLength: number): string {
@@ -124,6 +149,13 @@ async function readSettings(env: Env): Promise<Record<string, string>> {
 }
 
 async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
+  if (request.method === "OPTIONS") {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders(request, env)
+    });
+  }
+
   const pathname = url.pathname;
 
   if (request.method === "POST" && pathname === "/api/login") {
@@ -131,29 +163,32 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     const password = String(body?.password ?? "");
 
     if (!env.SITE_PASSWORD || !env.SESSION_SECRET) {
-      return json({ error: "CloudflareのSecretが未設定です。" }, 500);
+      return json({ error: "CloudflareのSecretが未設定です。" }, 500, {}, request, env);
     }
 
     if (password.length === 0 || password.length > 256) {
-      return json({ error: "パスワードを入力してください。" }, 400);
+      return json({ error: "パスワードを入力してください。" }, 400, {}, request, env);
     }
 
     const expected = textEncoder.encode(env.SITE_PASSWORD);
     const actual = textEncoder.encode(password);
     if (expected.length !== actual.length) {
-      return json({ error: "パスワードが違います。" }, 401);
+      return json({ error: "パスワードが違います。" }, 401, {}, request, env);
     }
 
     let different = 0;
     for (let i = 0; i < expected.length; i++) different |= expected[i] ^ actual[i];
-    if (different !== 0) return json({ error: "パスワードが違います。" }, 401);
+    if (different !== 0) return json({ error: "パスワードが違います。" }, 401, {}, request, env);
 
     const ttl = Math.max(300, Number(env.SESSION_TTL_SECONDS ?? "43200") || 43200);
     const token = await signSession(env);
+
     return json(
-      { ok: true, expiresIn: ttl },
+      { ok: true, token, expiresIn: ttl },
       200,
-      { "Set-Cookie": sessionCookie(token, ttl) }
+      { "Set-Cookie": sessionCookie(token, ttl) },
+      request,
+      env
     );
   }
 
@@ -161,7 +196,9 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return json(
       { ok: true },
       200,
-      { "Set-Cookie": sessionCookie("", 0) }
+      { "Set-Cookie": sessionCookie("", 0) },
+      request,
+      env
     );
   }
 
@@ -169,20 +206,20 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (authError) return authError;
 
   if (request.method === "GET" && pathname === "/api/settings") {
-    return json(await readSettings(env));
+    return json(await readSettings(env), 200, {}, request, env);
   }
 
   if (request.method === "PUT" && pathname === "/api/settings") {
     const body = await request.json().catch(() => null) as { songTitle?: unknown } | null;
     const songTitle = cleanText(body?.songTitle, 200);
-    if (!songTitle) return json({ error: "曲名を入力してください。" }, 400);
+    if (!songTitle) return json({ error: "曲名を入力してください。" }, 400, {}, request, env);
 
     await env.DB.prepare(
       "INSERT INTO settings(key, value) VALUES('songTitle', ?) " +
       "ON CONFLICT(key) DO UPDATE SET value = excluded.value"
     ).bind(songTitle).run();
 
-    return json({ ok: true, songTitle });
+    return json({ ok: true, songTitle }, 200, {}, request, env);
   }
 
   if (request.method === "GET" && pathname === "/api/messages") {
@@ -196,7 +233,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       audioUrl: row.type === "voice" ? "/api/voice/" + row.id : null
     }));
 
-    return json({ messages });
+    return json({ messages }, 200, {}, request, env);
   }
 
   if (request.method === "POST" && pathname === "/api/messages") {
@@ -204,27 +241,27 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     const author = cleanText(body?.author, 40) || "匿名";
     const message = cleanText(body?.body, 2000);
 
-    if (!message) return json({ error: "本文を入力してください。" }, 400);
+    if (!message) return json({ error: "本文を入力してください。" }, 400, {}, request, env);
 
     const id = crypto.randomUUID();
     await env.DB.prepare(
       "INSERT INTO messages(id, type, author, title, body, created_at) VALUES(?, 'text', ?, '', ?, ?)"
     ).bind(id, author, message, Date.now()).run();
 
-    return json({ ok: true, id });
+    return json({ ok: true, id }, 200, {}, request, env);
   }
 
   if (request.method === "POST" && pathname === "/api/voices") {
     const form = await request.formData();
     const audio = form.get("audio");
-    if (!(audio instanceof File)) return json({ error: "音声ファイルがありません。" }, 400);
+    if (!(audio instanceof File)) return json({ error: "音声ファイルがありません。" }, 400, {}, request, env);
 
     if (audio.size <= 0 || audio.size > MAX_AUDIO_BYTES) {
-      return json({ error: "音声は1ファイル10MBまでです。" }, 413);
+      return json({ error: "音声は1ファイル10MBまでです。" }, 413, {}, request, env);
     }
 
     if (!audio.type.startsWith("audio/")) {
-      return json({ error: "音声ファイルだけアップロードできます。" }, 415);
+      return json({ error: "音声ファイルだけアップロードできます。" }, 415, {}, request, env);
     }
 
     const durationMs = Math.max(
@@ -248,23 +285,23 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       "VALUES(?, 'voice', ?, ?, '', ?, ?, ?, ?, ?)"
     ).bind(id, author, title, objectKey, audio.type, audio.size, durationMs, Date.now()).run();
 
-    return json({ ok: true, id, audioUrl: "/api/voice/" + id });
+    return json({ ok: true, id, audioUrl: "/api/voice/" + id }, 200, {}, request, env);
   }
 
   if (request.method === "GET" && pathname.startsWith("/api/voice/")) {
     const id = pathname.slice("/api/voice/".length);
-    if (!id) return json({ error: "音声IDがありません。" }, 400);
+    if (!id) return new Response("Not found", { status: 404, headers: corsHeaders(request, env) });
 
     const row = await env.DB.prepare(
       "SELECT object_key, mime_type FROM messages WHERE id = ? AND type = 'voice'"
     ).bind(id).first<{ object_key: string; mime_type: string }>();
 
-    if (!row?.object_key) return new Response("Not found", { status: 404 });
+    if (!row?.object_key) return new Response("Not found", { status: 404, headers: corsHeaders(request, env) });
 
     const object = await env.AUDIO.get(row.object_key);
-    if (!object) return new Response("Not found", { status: 404 });
+    if (!object) return new Response("Not found", { status: 404, headers: corsHeaders(request, env) });
 
-    const headers = new Headers();
+    const headers = new Headers(corsHeaders(request, env));
     headers.set("Content-Type", row.mime_type || "application/octet-stream");
     headers.set("Cache-Control", "private, no-store");
     headers.set("Accept-Ranges", "bytes");
@@ -278,32 +315,30 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       "SELECT type, object_key FROM messages WHERE id = ?"
     ).bind(id).first<{ type: string; object_key: string | null }>();
 
-    if (!row) return json({ error: "メッセージが見つかりません。" }, 404);
+    if (!row) return json({ error: "メッセージが見つかりません。" }, 404, {}, request, env);
 
-    if (row.object_key) {
-      await env.AUDIO.delete(row.object_key);
-    }
-
+    if (row.object_key) await env.AUDIO.delete(row.object_key);
     await env.DB.prepare("DELETE FROM messages WHERE id = ?").bind(id).run();
-    return json({ ok: true });
+
+    return json({ ok: true }, 200, {}, request, env);
   }
 
-  return json({ error: "API endpoint not found" }, 404);
+  return json({ error: "API endpoint not found" }, 404, {}, request, env);
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname.startsWith("/api/")) {
-      try {
-        return await handleApi(request, env, url);
-      } catch (error) {
-        console.error(error);
-        return json({ error: "サーバー側でエラーが発生しました。" }, 500);
-      }
+    if (!url.pathname.startsWith("/api/")) {
+      return new Response("1A Choir API", { status: 200 });
     }
 
-    return env.ASSETS.fetch(request);
+    try {
+      return await handleApi(request, env, url);
+    } catch (error) {
+      console.error(error);
+      return json({ error: "サーバー側でエラーが発生しました。" }, 500, {}, request, env);
+    }
   }
-} satisfies ExportedHandler<Env>;
+};
