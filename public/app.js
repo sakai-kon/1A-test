@@ -134,15 +134,48 @@ function renderMessages(items) {
   for (const item of items) {
     const node = $("#message-template").content.cloneNode(true);
     const article = node.querySelector(".message");
+    const author = node.querySelector(".message-author");
+    const time = node.querySelector(".message-time");
     const title = node.querySelector(".message-title");
     const body = node.querySelector(".message-body");
     const audio = node.querySelector(".message-audio");
     const loadAudioButton = node.querySelector(".load-audio");
 
+    author.textContent = item.author || "匿名";
+    time.textContent = formatDate(item.created_at);
+
+    if (item.type === "voice") {
+      title.textContent = item.title || "音声伝言";
+      body.textContent = [
+        formatDuration(item.duration_ms),
+        item.size_bytes ? (item.size_bytes / 1024 / 1024).toFixed(1) + "MB" : ""
+      ].filter(Boolean).join(" ・ ");
+
+      loadAudioButton.addEventListener("click", async () => {
+        loadAudioButton.disabled = true;
+        loadAudioButton.textContent = "読み込み中…";
+        try {
+          await loadProtectedAudio(audio, item.object_path);
+          audio.classList.remove("hidden");
+          await audio.play();
+        } catch (error) {
+          alert("音声を再生できませんでした。");
+          console.error(error);
+        } finally {
+          loadAudioButton.disabled = false;
+          loadAudioButton.textContent = "▶ 音声を再生";
+        }
+      });
+    } else {
+      title.classList.add("hidden");
+      body.textContent = item.body || "";
+      loadAudioButton.classList.add("hidden");
+      audio.classList.add("hidden");
+    }
+
     container.appendChild(article);
   }
 }
-
 async function loadMessages({ force = false } = {}) {
   await requireUser();
 
