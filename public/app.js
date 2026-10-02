@@ -281,95 +281,75 @@ $("#message-form").addEventListener("submit", async (event) => {
   }
 });
 
-function resetRecording() {
-  if (state.timerId) clearInterval(state.timerId);
-  state.timerId = null;
-  state.startedAt = 0;
-  state.chunks = [];
-  state.recorder = null;
+let selectedVoiceFile = null;
 
-  if (state.stream) {
-    state.stream.getTracks().forEach((track) => track.stop());
-    state.stream = null;
-  }
-
-  $("#recording-time").textContent = "00:00";
-  $("#record-start").disabled = false;
-  $("#record-stop").disabled = true;
+function resetVoiceFile() {
+  selectedVoiceFile = null;
+  $("#voice-file").value = "";
+  $("#voice-form").reset();
+  $("#voice-form").classList.add("hidden");
+  $("#recording-preview").classList.add("hidden");
+  $("#recording-preview").removeAttribute("src");
 }
 
-function updateTimer() {
-  if (!state.startedAt) return;
-  const elapsed = Date.now() - state.startedAt;
-  $("#recording-time").textContent = formatDuration(elapsed);
-
-  if (elapsed >= MAX_AUDIO_DURATION_MS && state.recorder?.state === "recording") {
-    state.recorder.stop();
+$("#voice-file").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) {
+    resetVoiceFile();
+    return;
   }
-}
 
-$("#record-start").addEventListener("click", async () => {
   $("#recording-status").textContent = "";
 
-  if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-    $("#recording-status").textContent = "このブラウザでは録音に対応していません。";
+  if (!file.type.startsWith("audio/")) {
+    resetVoiceFile();
+    $("#recording-status").textContent = "音声ファイルを選択してください。";
+    return;
+  }
+
+  if (file.size > MAX_AUDIO_BYTES) {
+    resetVoiceFile();
+    $("#recording-status").textContent = "10MBを超えているため保存できません。";
     return;
   }
 
   try {
-    await requireUser();
-    state.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const previewUrl = URL.createObjectURL(file);
+    const audio = new Audio();
+    audio.preload = "metadata";
 
-    const preferredTypes = [
-      "audio/mp4",
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/ogg;codecs=opus"
-    ];
-    const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
+    await new Promise((resolve, reject) => {
+      audio.onloadedmetadata = resolve;
+      audio.onerror = () => reject(new Error("音声ファイルを読み込めませんでした。"));
+      audio.src = previewUrl;
+    });
 
-    state.recorder = mimeType
-      ? new MediaRecorder(state.stream, { mimeType })
-      : new MediaRecorder(state.stream);
+    const durationMs = Math.round(audio.duration * 1000);
+    URL.revokeObjectURL(previewUrl);
 
-    state.chunks = [];
-    state.startedAt = Date.now();
+    if (!Number.isFinite(durationMs) || durationMs <= 0) {
+      resetVoiceFile();
+      $("#recording-status").textContent = "音声の長さを確認できませんでした。";
+      return;
+    }
 
-    state.recorder.ondataavailable = (event) => {
-      if (event.data.size) state.chunks.push(event.data);
-    };
+    if (durationMs > MAX_AUDIO_DURATION_MS) {
+      resetVoiceFile();
+      $("#recording-status").textContent = "60秒を超える音声はアップロードできません。";
+      return;
+    }
 
-    state.recorder.onstop = () => {
-      const duration = Math.min(MAX_AUDIO_DURATION_MS, Date.now() - state.startedAt);
-      state.blob = new Blob(state.chunks, {
-        type: state.recorder.mimeType || "audio/mp4"
-      });
-
-      $("#recording-preview").src = URL.createObjectURL(state.blob);
-      $("#recording-preview").classList.remove("hidden");
-      $("#voice-form").classList.remove("hidden");
-      $("#voice-form").dataset.durationMs = String(duration);
-
-      $("#recording-status").textContent = state.blob.size > MAX_AUDIO_BYTES
-        ? "10MBを超えています。もう少し短く録音してください。"
-        : "録音できました。タイトルを入力して保存できます。";
-
-      resetRecording();
-    };
-
-    state.recorder.start(250);
-    $("#record-start").disabled = true;
-    $("#record-stop").disabled = false;
-    state.timerId = setInterval(updateTimer, 250);
-    updateTimer();
+    selectedVoiceFile = file;
+    $("#recording-preview").src = URL.createObjectURL(file);
+    $("#recording-preview").classList.remove("hidden");
+    $("#voice-form").classList.remove("hidden");
+    $("#voice-form").dataset.durationMs = String(durationMs);
+    $("#recording-status").textContent =
+      `${file.name}（${formatDuration(durationMs)} / ${(file.size / 1024 / 1024).toFixed(1)}MB）を選択しました。`;
   } catch (error) {
-    resetRecording();
-    $("#recording-status").textContent = error.message || "マイクを利用できませんでした。";
+    resetVoiceFile();
+    $("#recording-status").textContent = error.message || "音声ファイルを確認できませんでした。";
   }
-});
-
-$("#record-stop").addEventListener("click", () => {
-  if (state.recorder?.state === "recording") state.recorder.stop();
 });
 
 async function uploadVoice(file, objectPath) {
@@ -415,22 +395,17 @@ async function uploadVoice(file, objectPath) {
 
 $("#voice-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!state.blob) return;
-
-  if (state.blob.size > MAX_AUDIO_BYTES) {
-    $("#recording-status").textContent = "10MBを超えているため保存できません。";
-    return;
-  }
+  if (!selectedVoiceFile) return;
 
   try {
     const user = await requireUser();
     const id = crypto.randomUUID();
-    const extension = (state.blob.type.split("/")[1] || "audio")
-      .split(";")[0]
-      .replace(/[^a-z0-9.+-]/gi, "") || "audio";
+    const extension = (selectedVoiceFile.name.split(".").pop() || "audio")
+      .replace(/[^a-z0-9]+/gi, "") || "audio";
     const objectPath = `voices/${id}.${extension}`;
 
-    await uploadVoice(state.blob, objectPath);
+    $("#recording-status").textContent = "アップロードを開始しています…";
+    await uploadVoice(selectedVoiceFile, objectPath);
 
     const { error } = await supabaseClient
       .from("messages")
@@ -441,8 +416,8 @@ $("#voice-form").addEventListener("submit", async (event) => {
         title: $("#voice-title").value.trim() || "音声伝言",
         body: "",
         object_path: objectPath,
-        mime_type: state.blob.type || "application/octet-stream",
-        size_bytes: state.blob.size,
+        mime_type: selectedVoiceFile.type || "application/octet-stream",
+        size_bytes: selectedVoiceFile.size,
         duration_ms: Number($("#voice-form").dataset.durationMs || 0),
         user_id: user.id
       });
@@ -452,11 +427,7 @@ $("#voice-form").addEventListener("submit", async (event) => {
       throw error;
     }
 
-    $("#voice-form").reset();
-    $("#voice-form").classList.add("hidden");
-    $("#recording-preview").classList.add("hidden");
-    $("#recording-preview").removeAttribute("src");
-    state.blob = null;
+    resetVoiceFile();
     $("#recording-status").textContent = "音声を保存しました。";
     await loadMessages();
   } catch (error) {
