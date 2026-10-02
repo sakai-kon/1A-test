@@ -1,0 +1,17 @@
+{
+  "name": "1a-choir-practice",
+  "private": true,
+  "version": "0.1.0",
+  "description": "1A 合唱練習サイト - Cloudflare Workers + D1 + R2",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "d1:migrate:local": "wrangler d1 migrations apply DB --local",
+    "d1:migrate": "wrangler d1 migrations apply DB --remote",
+    "types": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260928.0",
+    "wrangler": "^4.40.0"
+  }
+}
