@@ -1,6 +1,9 @@
 const $ = (selector) => document.querySelector(selector);
+const API_BASE = String(window.CHOIR_CONFIG?.API_BASE || "").replace(/\/$/, "");
+const API_READY = /^https:\/\/[^/]+/.test(API_BASE) && !API_BASE.includes("YOUR-WORKER");
 
 const state = {
+  token: sessionStorage.getItem("choir_token") || "",
   recorder: null,
   chunks: [],
   blob: null,
@@ -9,22 +12,34 @@ const state = {
   timerId: null
 };
 
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    ...options,
-    headers: {
-      ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...(options.headers || {})
-    },
-    credentials: "same-origin"
-  });
+function apiUrl(path) {
+  return API_BASE + (path.startsWith("/") ? path : "/" + path);
+}
 
+async function request(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (!(options.body instanceof FormData) && options.body !== undefined) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (state.token) headers.set("Authorization", "Bearer " + state.token);
+
+  return fetch(apiUrl(path), {
+    ...options,
+    headers
+  });
+}
+
+async function api(path, options = {}) {
+  const response = await request(path, options);
   const contentType = response.headers.get("content-type") || "";
-  const data = contentType.includes("application/json")
-    ? await response.json()
-    : await response.text();
+  const data = contentType.includes("application/json") ? await response.json() : await response.text();
 
   if (!response.ok) {
+    if (response.status === 401) {
+      state.token = "";
+      sessionStorage.removeItem("choir_token");
+      showApp(false);
+    }
     const message = typeof data === "object" && data?.error ? data.error : "通信に失敗しました。";
     throw new Error(message);
   }
@@ -61,6 +76,24 @@ async function loadSettings() {
   $("#song-input").value = settings.songTitle || "";
 }
 
+async function loadProtectedAudio(audio, audioUrl) {
+  if (audio.dataset.loaded === "true") return;
+
+  audio.disabled = true;
+  try {
+    const response = await request(audioUrl);
+    if (!response.ok) throw new Error("音声を取得できませんでした。");
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    audio.src = objectUrl;
+    audio.dataset.loaded = "true";
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    audio.disabled = false;
+  }
+}
+
 function renderMessages(items) {
   const container = $("#messages");
   container.replaceChildren();
@@ -89,9 +122,9 @@ function renderMessages(items) {
       : "文字の伝言";
 
     body.textContent = item.type === "voice" ? "" : item.body;
+
     if (item.type === "voice") {
-      audio.src = item.audioUrl;
-      audio.classList.remove("hidden");
+      audio.addEventListener("play", () => loadProtectedAudio(audio, item.audioUrl), { once: true });
     } else {
       audio.remove();
     }
@@ -116,9 +149,21 @@ async function loadMessages() {
 }
 
 async function initialize() {
+  if (!API_READY) {
+    $("#setup-warning").classList.remove("hidden");
+    showApp(false);
+    return;
+  }
+
+  $("#setup-warning").classList.add("hidden");
+
+  if (!state.token) {
+    showApp(false);
+    return;
+  }
+
   try {
-    await loadSettings();
-    await loadMessages();
+    await Promise.all([loadSettings(), loadMessages()]);
     showApp(true);
   } catch {
     showApp(false);
@@ -129,11 +174,15 @@ $("#login-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("#login-error").textContent = "";
 
+  if (!API_READY) return;
+
   try {
-    await api("/api/login", {
+    const result = await api("/api/login", {
       method: "POST",
       body: JSON.stringify({ password: $("#password").value })
     });
+    state.token = result.token;
+    sessionStorage.setItem("choir_token", state.token);
     $("#password").value = "";
     await initialize();
   } catch (error) {
@@ -142,7 +191,9 @@ $("#login-form").addEventListener("submit", async (event) => {
 });
 
 $("#logout-button").addEventListener("click", async () => {
-  await api("/api/logout", { method: "POST" }).catch(() => {});
+  if (API_READY) await api("/api/logout", { method: "POST" }).catch(() => {});
+  state.token = "";
+  sessionStorage.removeItem("choir_token");
   showApp(false);
 });
 
@@ -189,7 +240,6 @@ function resetRecording() {
   state.timerId = null;
   state.startedAt = 0;
   state.chunks = [];
-  state.blob = null;
   state.recorder = null;
   if (state.stream) {
     state.stream.getTracks().forEach((track) => track.stop());
@@ -233,6 +283,7 @@ $("#record-start").addEventListener("click", async () => {
 
     state.chunks = [];
     state.startedAt = Date.now();
+
     state.recorder.ondataavailable = (event) => {
       if (event.data.size) state.chunks.push(event.data);
     };
@@ -255,7 +306,7 @@ $("#record-start").addEventListener("click", async () => {
     $("#record-stop").disabled = false;
     state.timerId = setInterval(updateTimer, 250);
     updateTimer();
-  } catch (error) {
+  } catch {
     resetRecording();
     $("#recording-status").textContent = "マイクを利用できませんでした。ブラウザの権限を確認してください。";
   }
