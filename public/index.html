@@ -19,18 +19,15 @@
     </header>
 
     <section id="setup-warning" class="card warning hidden">
-      <h2>Cloudflare APIが未設定です</h2>
-      <p class="muted">GitHub Pagesの画面は公開できますが、ログインやデータ保存にはCloudflare WorkerのURL設定が必要です。</p>
+      <h2>Supabaseが未設定です</h2>
+      <p class="muted">public/config.js にSupabase URL・Publishable Key・ログイン用メールアドレスを設定してください。</p>
     </section>
 
     <section id="login-view" class="card">
       <h2>ログイン</h2>
       <p class="muted">クラス用パスワードを入力してください。</p>
       <form id="login-form" class="stack">
-        <label>
-          パスワード
-          <input id="password" type="password" autocomplete="current-password" required>
-        </label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="パスワード" required>
         <button type="submit">入る</button>
         <p id="login-error" class="error" role="alert"></p>
       </form>
@@ -57,7 +54,7 @@
 
         <section class="card">
           <h2>音声の伝言</h2>
-          <p class="muted">最大60秒・1ファイル10MB。録音した音声は非公開で保存されます。</p>
+          <p class="muted">最大60秒・1ファイル10MB。音声は非公開Storageに保存します。</p>
           <div class="recorder">
             <div class="timer" id="recording-time">00:00</div>
             <div class="record-buttons">
@@ -102,6 +99,8 @@
     </article>
   </template>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tus-js-client@4/dist/tus.min.js"></script>
   <script src="./config.js"></script>
   <script src="./app.js" defer></script>
 </body>
