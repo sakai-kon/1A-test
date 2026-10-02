@@ -3,6 +3,6 @@ window.CHOIR_CONFIG = {
   SUPABASE_URL: "https://jwizoczvtuxqtyxtbson.supabase.co",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_YT8SDemf956-YHvSxwC4ZA_6yV7Q175",
 
-  // Supabase Authで作成するクラス用ログインアカウント
-  AUTH_EMAIL: "YOUR-CLASS-LOGIN-EMAIL"
+  // Shared class guest login account (the site UI asks only for the password)
+  AUTH_EMAIL: "1a-choir-login@example.com"
 };
