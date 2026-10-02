@@ -1,5 +1,9 @@
 window.CHOIR_CONFIG = {
-  // Cloudflare Workerの公開URLに置き換えてください。
-  // 例: "https://1a-choir-practice.example.workers.dev"
-  API_BASE: "https://YOUR-WORKER.workers.dev"
+  // Supabase Project Settings > API から設定します。
+  SUPABASE_URL: "https://YOUR-PROJECT.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "YOUR-PUBLISHABLE-KEY",
+
+  // クラス用Supabase Authアカウントのメールアドレス。
+  // 画面には表示せず、このアカウントでパスワードログインします。
+  AUTH_EMAIL: "YOUR-CLASS-LOGIN-EMAIL"
 };
