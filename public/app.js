@@ -138,60 +138,6 @@ function renderMessages(items) {
     const body = node.querySelector(".message-body");
     const audio = node.querySelector(".message-audio");
     const loadAudioButton = node.querySelector(".load-audio");
-    const deleteButton = node.querySelector(".delete-button");
-
-    node.querySelector(".message-author").textContent = item.author || "匿名";
-    node.querySelector(".message-time").textContent = formatDate(item.created_at);
-
-    title.textContent = item.type === "voice"
-      ? (item.title || "音声伝言") + "（" + formatDuration(item.duration_ms) + "）"
-      : "文字の伝言";
-
-    body.textContent = item.type === "voice" ? "" : item.body;
-
-    if (item.type === "voice") {
-      loadAudioButton.addEventListener("click", async () => {
-        loadAudioButton.disabled = true;
-        loadAudioButton.textContent = "読み込み中…";
-        try {
-          await loadProtectedAudio(audio, item.object_path);
-          loadAudioButton.classList.add("hidden");
-          audio.classList.remove("hidden");
-          await audio.play();
-        } catch (error) {
-          alert(error.message);
-          loadAudioButton.disabled = false;
-          loadAudioButton.textContent = "▶ 音声を再生";
-        }
-      });
-    } else {
-      loadAudioButton.remove();
-      audio.remove();
-    }
-
-    deleteButton.addEventListener("click", async () => {
-      if (!confirm("この伝言を削除しますか？")) return;
-
-      try {
-        if (item.type === "voice" && item.object_path) {
-          const { error: storageError } = await supabaseClient
-            .storage
-            .from(AUDIO_BUCKET)
-            .remove([item.object_path]);
-          if (storageError) throw storageError;
-        }
-
-        const { error } = await supabaseClient
-          .from("messages")
-          .delete()
-          .eq("id", item.id);
-
-        if (error) throw error;
-        await loadMessages({ force: true });
-      } catch (error) {
-        alert(error.message);
-      }
-    });
 
     container.appendChild(article);
   }
