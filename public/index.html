@@ -3,95 +3,80 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#101827">
-  <title>1A 合唱練習サイト</title>
+  <meta name="theme-color" content="#f5f7fb">
+  <title>1A 合唱伝言板</title>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <main class="container">
     <header class="hero">
       <div>
-        <p class="eyebrow">CHOIR PRACTICE</p>
-        <h1 id="site-title">1A 合唱練習サイト</h1>
-        <p id="song-title" class="song-title">読み込み中…</p>
+        <h1 id="site-title">1A 合唱伝言板</h1>
+        <p id="song-title" class="song-title">曲名未設定</p>
       </div>
-      <button id="logout-button" class="ghost hidden">ログアウト</button>
+      <button id="logout-button" class="text-button hidden">ログアウト</button>
     </header>
 
-    <section id="setup-warning" class="card warning hidden">
-      <h2>Supabaseが未設定です</h2>
-      <p class="muted">public/config.js にSupabase URL・Publishable Key・ログイン用メールアドレスを設定してください。</p>
-    </section>
+    <section id="setup-warning" class="notice hidden"><p>サイトの設定を確認してください。</p></section>
 
-    <section id="login-view" class="card">
-      <h2>ログイン</h2>
-      <p class="muted">クラス用パスワードを入力してください。</p>
+    <section id="login-view" class="login-card">
+      <h2>1A 合唱伝言板</h2>
       <form id="login-form" class="stack">
-        <input id="password" type="password" autocomplete="current-password" placeholder="パスワード" required>
+        <input id="password" type="password" autocomplete="current-password" placeholder="クラスパスワード" required>
         <button type="submit">入る</button>
         <p id="login-error" class="error" role="alert"></p>
       </form>
     </section>
 
     <section id="app-view" class="hidden">
-      <div class="grid">
-        <section class="card">
-          <h2>曲名</h2>
-          <form id="song-form" class="inline-form">
-            <input id="song-input" maxlength="200" placeholder="合唱曲名">
-            <button type="submit">保存</button>
-          </form>
-        </section>
+      <section class="quick-post card">
+        <form id="message-form" class="stack">
+          <input id="message-author" maxlength="40" placeholder="名前（任意）">
+          <textarea id="message-body" maxlength="2000" rows="3" placeholder="伝言を書く…"></textarea>
+          <button type="submit">伝言を投稿</button>
+        </form>
+      </section>
 
-        <section class="card">
-          <h2>文字の伝言</h2>
-          <form id="message-form" class="stack">
-            <input id="message-author" maxlength="40" placeholder="名前（任意）">
-            <textarea id="message-body" maxlength="2000" rows="4" placeholder="練習について伝えたいこと"></textarea>
-            <button type="submit">伝言を投稿</button>
-          </form>
-        </section>
-
-        <section class="card">
-          <h2>音声の伝言</h2>
-          <p class="muted">音声ファイルを選択してください。1ファイル10MBまで。音声は非公開Storageに保存します。</p>
-          <div class="recorder">
-            <input id="voice-file" type="file" accept="audio/*">
-            <audio id="recording-preview" class="hidden" controls></audio>
-            <form id="voice-form" class="stack hidden">
-              <input id="voice-author" maxlength="40" placeholder="名前（任意）">
-              <input id="voice-title" maxlength="100" placeholder="音声伝言のタイトル">
-              <button type="submit">音声をアップロード</button>
-            </form>
-            <p id="recording-status" class="muted"></p>
-          </div>
-        </section>
-      </div>
-
-      <section class="card">
+      <section class="card audio-post">
         <div class="section-heading">
-          <div>
-            <h2>伝言一覧</h2>
-            <p class="muted">新しいものから表示します。</p>
-          </div>
-          <button id="reload-button" class="ghost" type="button">更新</button>
+          <div><h2>🎧 音声を送る</h2><p class="muted">音声ファイルを選択（10MBまで）</p></div>
+        </div>
+        <input id="voice-file" type="file" accept="audio/*">
+        <audio id="recording-preview" class="hidden" controls></audio>
+        <form id="voice-form" class="stack hidden">
+          <input id="voice-author" maxlength="40" placeholder="名前（任意）">
+          <input id="voice-title" maxlength="100" placeholder="タイトル（任意）">
+          <button type="submit">音声を送る</button>
+        </form>
+        <p id="recording-status" class="muted"></p>
+      </section>
+
+      <section class="card messages-card">
+        <div class="section-heading">
+          <h2>最新の伝言</h2>
+          <button id="reload-button" class="text-button" type="button">更新</button>
         </div>
         <div id="messages" class="messages"></div>
       </section>
+
+      <details class="settings">
+        <summary>曲名を変更</summary>
+        <form id="song-form" class="inline-form">
+          <input id="song-input" maxlength="200" placeholder="合唱曲名">
+          <button type="submit">保存</button>
+        </form>
+      </details>
     </section>
   </main>
 
   <template id="message-template">
     <article class="message">
-      <div class="message-head">
-        <strong class="message-author"></strong>
-        <time class="message-time"></time>
-      </div>
+      <div class="message-head"><strong class="message-author"></strong><time class="message-time"></time></div>
       <h3 class="message-title"></h3>
       <p class="message-body"></p>
-      <button class="load-audio ghost" type="button">▶ 音声を再生</button>
+      <button class="load-audio audio-button" type="button">▶ 音声を再生</button>
       <audio class="message-audio hidden" controls preload="none"></audio>
-      <button class="delete-button ghost" type="button">削除</button>
+      <button class="delete-button text-button" type="button">削除</button>
     </article>
   </template>
 
