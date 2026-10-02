@@ -1,9 +1,24 @@
 const $ = (selector) => document.querySelector(selector);
-const API_BASE = String(window.CHOIR_CONFIG?.API_BASE || "").replace(/\/$/, "");
-const API_READY = /^https:\/\/[^/]+/.test(API_BASE) && !API_BASE.includes("YOUR-WORKER");
+const CONFIG = window.CHOIR_CONFIG || {};
+const SUPABASE_URL = String(CONFIG.SUPABASE_URL || "").replace(/\/$/, "");
+const SUPABASE_KEY = String(CONFIG.SUPABASE_PUBLISHABLE_KEY || "");
+const AUTH_EMAIL = String(CONFIG.AUTH_EMAIL || "");
+const API_READY =
+  /^https:\/\/[^/]+\.supabase\.co$/.test(SUPABASE_URL) &&
+  SUPABASE_KEY &&
+  AUTH_EMAIL &&
+  !SUPABASE_URL.includes("YOUR-PROJECT") &&
+  !SUPABASE_KEY.includes("YOUR-PUBLISHABLE");
+
+const AUDIO_BUCKET = "choir-audio";
+const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+const MAX_AUDIO_DURATION_MS = 60_000;
+
+const supabaseClient = API_READY
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+  : null;
 
 const state = {
-  token: sessionStorage.getItem("choir_token") || "",
   recorder: null,
   chunks: [],
   blob: null,
@@ -12,49 +27,14 @@ const state = {
   timerId: null
 };
 
-function apiUrl(path) {
-  return API_BASE + (path.startsWith("/") ? path : "/" + path);
-}
-
-async function request(path, options = {}) {
-  const headers = new Headers(options.headers || {});
-  if (!(options.body instanceof FormData) && options.body !== undefined) {
-    headers.set("Content-Type", "application/json");
-  }
-  if (state.token) headers.set("Authorization", "Bearer " + state.token);
-
-  return fetch(apiUrl(path), {
-    ...options,
-    headers
-  });
-}
-
-async function api(path, options = {}) {
-  const response = await request(path, options);
-  const contentType = response.headers.get("content-type") || "";
-  const data = contentType.includes("application/json") ? await response.json() : await response.text();
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      state.token = "";
-      sessionStorage.removeItem("choir_token");
-      showApp(false);
-    }
-    const message = typeof data === "object" && data?.error ? data.error : "通信に失敗しました。";
-    throw new Error(message);
-  }
-
-  return data;
-}
-
 function showApp(loggedIn) {
   $("#login-view").classList.toggle("hidden", loggedIn);
   $("#app-view").classList.toggle("hidden", !loggedIn);
   $("#logout-button").classList.toggle("hidden", !loggedIn);
 }
 
-function formatDate(ms) {
-  return new Date(Number(ms)).toLocaleString("ja-JP", {
+function formatDate(value) {
+  return new Date(value).toLocaleString("ja-JP", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -64,34 +44,46 @@ function formatDate(ms) {
 
 function formatDuration(ms) {
   const total = Math.max(0, Math.round(Number(ms || 0) / 1000));
-  const min = Math.floor(total / 60);
-  const sec = String(total % 60).padStart(2, "0");
-  return min + ":" + sec;
+  return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+}
+
+async function requireUser() {
+  if (!supabaseClient) throw new Error("Supabaseが未設定です。");
+  const { data, error } = await supabaseClient.auth.getUser();
+  if (error || !data.user) {
+    showApp(false);
+    throw new Error("ログインが必要です。");
+  }
+  return data.user;
 }
 
 async function loadSettings() {
-  const settings = await api("/api/settings");
+  await requireUser();
+
+  const { data, error } = await supabaseClient
+    .from("settings")
+    .select("key,value");
+
+  if (error) throw error;
+
+  const settings = Object.fromEntries((data || []).map((row) => [row.key, row.value]));
   $("#site-title").textContent = settings.siteTitle || "1A 合唱練習サイト";
   $("#song-title").textContent = settings.songTitle || "曲名未設定";
   $("#song-input").value = settings.songTitle || "";
 }
 
-async function loadProtectedAudio(audio, audioUrl) {
+async function loadProtectedAudio(audio, path) {
   if (audio.dataset.loaded === "true") return;
 
-  audio.disabled = true;
-  try {
-    const response = await request(audioUrl);
-    if (!response.ok) throw new Error("音声を取得できませんでした。");
-    const blob = await response.blob();
-    const objectUrl = URL.createObjectURL(blob);
-    audio.src = objectUrl;
-    audio.dataset.loaded = "true";
-  } catch (error) {
-    alert(error.message);
-  } finally {
-    audio.disabled = false;
-  }
+  const { data, error } = await supabaseClient
+    .storage
+    .from(AUDIO_BUCKET)
+    .createSignedUrl(path, 300);
+
+  if (error) throw error;
+
+  audio.src = data.signedUrl;
+  audio.dataset.loaded = "true";
 }
 
 function renderMessages(items) {
@@ -129,7 +121,7 @@ function renderMessages(items) {
         loadAudioButton.disabled = true;
         loadAudioButton.textContent = "読み込み中…";
         try {
-          await loadProtectedAudio(audio, item.audioUrl);
+          await loadProtectedAudio(audio, item.object_path);
           loadAudioButton.classList.add("hidden");
           audio.classList.remove("hidden");
           await audio.play();
@@ -146,8 +138,22 @@ function renderMessages(items) {
 
     deleteButton.addEventListener("click", async () => {
       if (!confirm("この伝言を削除しますか？")) return;
+
       try {
-        await api("/api/messages/" + encodeURIComponent(item.id), { method: "DELETE" });
+        if (item.type === "voice" && item.object_path) {
+          const { error: storageError } = await supabaseClient
+            .storage
+            .from(AUDIO_BUCKET)
+            .remove([item.object_path]);
+          if (storageError) throw storageError;
+        }
+
+        const { error } = await supabaseClient
+          .from("messages")
+          .delete()
+          .eq("id", item.id);
+
+        if (error) throw error;
         await loadMessages();
       } catch (error) {
         alert(error.message);
@@ -159,8 +165,16 @@ function renderMessages(items) {
 }
 
 async function loadMessages() {
-  const data = await api("/api/messages");
-  renderMessages(data.messages || []);
+  await requireUser();
+
+  const { data, error } = await supabaseClient
+    .from("messages")
+    .select("id,type,author,title,body,object_path,mime_type,size_bytes,duration_ms,created_at")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) throw error;
+  renderMessages(data || []);
 }
 
 async function initialize() {
@@ -172,7 +186,8 @@ async function initialize() {
 
   $("#setup-warning").classList.add("hidden");
 
-  if (!state.token) {
+  const { data } = await supabaseClient.auth.getSession();
+  if (!data.session) {
     showApp(false);
     return;
   }
@@ -180,7 +195,8 @@ async function initialize() {
   try {
     await Promise.all([loadSettings(), loadMessages()]);
     showApp(true);
-  } catch {
+  } catch (error) {
+    console.error(error);
     showApp(false);
   }
 }
@@ -192,23 +208,23 @@ $("#login-form").addEventListener("submit", async (event) => {
   if (!API_READY) return;
 
   try {
-    const result = await api("/api/login", {
-      method: "POST",
-      body: JSON.stringify({ password: $("#password").value })
+    const { error } = await supabaseClient.auth.signInWithPassword({
+      email: AUTH_EMAIL,
+      password: $("#password").value
     });
-    state.token = result.token;
-    sessionStorage.setItem("choir_token", state.token);
+
+    if (error) throw error;
+
     $("#password").value = "";
     await initialize();
   } catch (error) {
-    $("#login-error").textContent = error.message;
+    $("#login-error").textContent = "ログインできませんでした。パスワードを確認してください。";
+    console.error(error);
   }
 });
 
 $("#logout-button").addEventListener("click", async () => {
-  if (API_READY) await api("/api/logout", { method: "POST" }).catch(() => {});
-  state.token = "";
-  sessionStorage.removeItem("choir_token");
+  if (supabaseClient) await supabaseClient.auth.signOut();
   showApp(false);
 });
 
@@ -222,11 +238,17 @@ $("#reload-button").addEventListener("click", async () => {
 
 $("#song-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+
   try {
-    await api("/api/settings", {
-      method: "PUT",
-      body: JSON.stringify({ songTitle: $("#song-input").value })
-    });
+    await requireUser();
+    const songTitle = $("#song-input").value.trim();
+    if (!songTitle) throw new Error("曲名を入力してください。");
+
+    const { error } = await supabaseClient
+      .from("settings")
+      .upsert({ key: "songTitle", value: songTitle });
+
+    if (error) throw error;
     await loadSettings();
   } catch (error) {
     alert(error.message);
@@ -235,14 +257,23 @@ $("#song-form").addEventListener("submit", async (event) => {
 
 $("#message-form").addEventListener("submit", async (event) => {
   event.preventDefault();
+
   try {
-    await api("/api/messages", {
-      method: "POST",
-      body: JSON.stringify({
-        author: $("#message-author").value,
-        body: $("#message-body").value
-      })
-    });
+    const user = await requireUser();
+    const body = $("#message-body").value.trim();
+    if (!body) throw new Error("本文を入力してください。");
+
+    const { error } = await supabaseClient
+      .from("messages")
+      .insert({
+        type: "text",
+        author: $("#message-author").value.trim() || "匿名",
+        body,
+        user_id: user.id
+      });
+
+    if (error) throw error;
+
     $("#message-body").value = "";
     await loadMessages();
   } catch (error) {
@@ -256,10 +287,12 @@ function resetRecording() {
   state.startedAt = 0;
   state.chunks = [];
   state.recorder = null;
+
   if (state.stream) {
     state.stream.getTracks().forEach((track) => track.stop());
     state.stream = null;
   }
+
   $("#recording-time").textContent = "00:00";
   $("#record-start").disabled = false;
   $("#record-stop").disabled = true;
@@ -269,7 +302,8 @@ function updateTimer() {
   if (!state.startedAt) return;
   const elapsed = Date.now() - state.startedAt;
   $("#recording-time").textContent = formatDuration(elapsed);
-  if (elapsed >= 60_000 && state.recorder?.state === "recording") {
+
+  if (elapsed >= MAX_AUDIO_DURATION_MS && state.recorder?.state === "recording") {
     state.recorder.stop();
   }
 }
@@ -283,6 +317,7 @@ $("#record-start").addEventListener("click", async () => {
   }
 
   try {
+    await requireUser();
     state.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
     const preferredTypes = [
@@ -292,6 +327,7 @@ $("#record-start").addEventListener("click", async () => {
       "audio/ogg;codecs=opus"
     ];
     const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
+
     state.recorder = mimeType
       ? new MediaRecorder(state.stream, { mimeType })
       : new MediaRecorder(state.stream);
@@ -304,15 +340,20 @@ $("#record-start").addEventListener("click", async () => {
     };
 
     state.recorder.onstop = () => {
-      const duration = Math.min(60_000, Date.now() - state.startedAt);
-      state.blob = new Blob(state.chunks, { type: state.recorder.mimeType || "audio/mp4" });
+      const duration = Math.min(MAX_AUDIO_DURATION_MS, Date.now() - state.startedAt);
+      state.blob = new Blob(state.chunks, {
+        type: state.recorder.mimeType || "audio/mp4"
+      });
+
       $("#recording-preview").src = URL.createObjectURL(state.blob);
       $("#recording-preview").classList.remove("hidden");
       $("#voice-form").classList.remove("hidden");
-      $("#recording-status").textContent = state.blob.size > 10 * 1024 * 1024
-        ? "録音が10MBを超えています。もう一度短めに録音してください。"
-        : "録音できました。タイトルを入力して保存できます。";
       $("#voice-form").dataset.durationMs = String(duration);
+
+      $("#recording-status").textContent = state.blob.size > MAX_AUDIO_BYTES
+        ? "10MBを超えています。もう少し短く録音してください。"
+        : "録音できました。タイトルを入力して保存できます。";
+
       resetRecording();
     };
 
@@ -321,9 +362,9 @@ $("#record-start").addEventListener("click", async () => {
     $("#record-stop").disabled = false;
     state.timerId = setInterval(updateTimer, 250);
     updateTimer();
-  } catch {
+  } catch (error) {
     resetRecording();
-    $("#recording-status").textContent = "マイクを利用できませんでした。ブラウザの権限を確認してください。";
+    $("#recording-status").textContent = error.message || "マイクを利用できませんでした。";
   }
 });
 
@@ -331,19 +372,86 @@ $("#record-stop").addEventListener("click", () => {
   if (state.recorder?.state === "recording") state.recorder.stop();
 });
 
+async function uploadVoice(file, objectPath) {
+  const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+  if (sessionError || !sessionData.session) throw new Error("ログインが必要です。");
+
+  if (!window.tus?.Upload) {
+    throw new Error("大容量アップロード機能の読み込みに失敗しました。");
+  }
+
+  const projectRef = new URL(SUPABASE_URL).hostname.split(".")[0];
+  const endpoint = `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
+  const token = sessionData.session.access_token;
+
+  await new Promise((resolve, reject) => {
+    const upload = new tus.Upload(file, {
+      endpoint,
+      retryDelays: [0, 1000, 3000, 5000],
+      chunkSize: 6 * 1024 * 1024,
+      uploadDataDuringCreation: true,
+      removeFingerprintOnSuccess: true,
+      metadata: {
+        bucketName: AUDIO_BUCKET,
+        objectName: objectPath,
+        contentType: file.type,
+        cacheControl: "3600"
+      },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_KEY
+      },
+      onError: reject,
+      onProgress: (bytesUploaded, bytesTotal) => {
+        const percent = Math.floor((bytesUploaded / bytesTotal) * 100);
+        $("#recording-status").textContent = `アップロード中… ${percent}%`;
+      },
+      onSuccess: resolve
+    });
+
+    upload.start();
+  });
+}
+
 $("#voice-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!state.blob) return;
 
-  const form = new FormData();
-  form.append("audio", state.blob, "voice");
-  form.append("author", $("#voice-author").value);
-  form.append("title", $("#voice-title").value);
-  form.append("durationMs", $("#voice-form").dataset.durationMs || "0");
+  if (state.blob.size > MAX_AUDIO_BYTES) {
+    $("#recording-status").textContent = "10MBを超えているため保存できません。";
+    return;
+  }
 
   try {
-    $("#recording-status").textContent = "アップロード中…";
-    await api("/api/voices", { method: "POST", body: form });
+    const user = await requireUser();
+    const id = crypto.randomUUID();
+    const extension = (state.blob.type.split("/")[1] || "audio")
+      .split(";")[0]
+      .replace(/[^a-z0-9.+-]/gi, "") || "audio";
+    const objectPath = `voices/${id}.${extension}`;
+
+    await uploadVoice(state.blob, objectPath);
+
+    const { error } = await supabaseClient
+      .from("messages")
+      .insert({
+        id,
+        type: "voice",
+        author: $("#voice-author").value.trim() || "匿名",
+        title: $("#voice-title").value.trim() || "音声伝言",
+        body: "",
+        object_path: objectPath,
+        mime_type: state.blob.type || "application/octet-stream",
+        size_bytes: state.blob.size,
+        duration_ms: Number($("#voice-form").dataset.durationMs || 0),
+        user_id: user.id
+      });
+
+    if (error) {
+      await supabaseClient.storage.from(AUDIO_BUCKET).remove([objectPath]);
+      throw error;
+    }
+
     $("#voice-form").reset();
     $("#voice-form").classList.add("hidden");
     $("#recording-preview").classList.add("hidden");
@@ -352,8 +460,15 @@ $("#voice-form").addEventListener("submit", async (event) => {
     $("#recording-status").textContent = "音声を保存しました。";
     await loadMessages();
   } catch (error) {
-    $("#recording-status").textContent = error.message;
+    $("#recording-status").textContent = error.message || "音声の保存に失敗しました。";
+    console.error(error);
   }
 });
+
+if (supabaseClient) {
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    if (!session) showApp(false);
+  });
+}
 
 initialize();
