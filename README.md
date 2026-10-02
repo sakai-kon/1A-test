@@ -1,111 +1,136 @@
 # 1A 合唱練習サイト
 
-Cloudflare Workers + D1 + R2 で動く、クラス内向けの合唱練習サイトです。
+**GitHub Pagesでフロントエンドを公開し、Cloudflare Worker + D1 + R2をバックエンドに使う構成**です。
 
-## できること
+## いま入っている機能
 
+- GitHub Pages対応の静的Webサイト
 - クラス共通パスワードでログイン
-- 合唱曲名の変更
+- 曲名の変更
 - 文字の伝言
 - ブラウザから最大60秒の音声伝言を録音
-- 音声ファイルをR2へ非公開保存
-- 音声のメタデータをD1へ保存
+- 音声ファイルをCloudflare R2へ非公開保存
+- 音声のメタデータをCloudflare D1へ保存
 - 伝言の再生・削除
-- Workerから静的サイトも配信
+- GitHub ActionsでPagesへ自動デプロイ
+- GitHub PagesとCloudflare Workerが別ドメインでも動く認証
+- 音声再生時もBearer認証を付けて取得
 
-音声ファイル本体はR2、曲名・伝言・音声メタデータはD1に保存します。D1に大きな音声バイナリを直接保存する構成にはしていません。
+## 構成
 
-## Cloudflare側の初期設定
+```
+GitHub Pages
+  └─ Web UI
+       │
+       │ HTTPS + Authorization
+       ▼
+Cloudflare Worker
+  ├─ 認証
+  ├─ API
+  ├─ D1
+  │   └─ 曲名・伝言・音声メタデータ
+  └─ R2
+      └─ 音声ファイル本体
+```
 
-このリポジトリはCloudflareのアカウントへ自動接続する秘密情報を持たないため、最初のリソース作成だけ本人のCloudflareアカウントで行います。
+音声バイナリをD1へ直接保存せず、R2へ保存します。
 
-### 1. ローカルへ取得
+## GitHub Pages公開
+
+このリポジトリには `.github/workflows/pages.yml` を入れてあります。
+
+GitHubのリポジトリ設定で **Pages → Source → GitHub Actions** を選択してください。
+その後、`main` にpushするとPagesへ自動デプロイされます。
+
+このリポジトリの場合の公開先は通常、
+
+`https://sakai-kon.github.io/1A-test/`
+
+です。
+
+## Cloudflare側
+
+### 1. D1
 
 ```bash
 npm install
 npx wrangler login
-```
-
-### 2. D1を作成
-
-```bash
 npx wrangler d1 create 1a-choir-db
 ```
 
-表示された `database_id` を `wrangler.jsonc` の
-`REPLACE_WITH_D1_DATABASE_ID` に入れます。
+返ってきた `database_id` を `wrangler.jsonc` の
+`REPLACE_WITH_D1_DATABASE_ID` に設定します。
 
-### 3. R2を作成
+### 2. R2
 
 ```bash
 npx wrangler r2 bucket create 1a-choir-audio
 ```
 
-### 4. パスワードとセッション秘密鍵を登録
+### 3. Secret
 
 ```bash
 npx wrangler secret put SITE_PASSWORD
 npx wrangler secret put SESSION_SECRET
 ```
 
-`SESSION_SECRET` は十分長いランダム文字列にしてください。Node.jsが使えるなら次のように生成できます。
+`SESSION_SECRET` は十分長いランダム文字列にしてください。
 
-```bash
-node -e "console.log(crypto.randomUUID()+crypto.randomUUID()+crypto.randomUUID())"
-```
+パスワードや秘密鍵はGitHubへ書き込まないでください。
 
-パスワードや秘密鍵をGitHubのソースコードには書かないでください。
-
-### 5. D1のテーブルを作成
+### 4. D1 Migration
 
 ```bash
 npm run d1:migrate
 ```
 
-### 6. 動作確認
-
-```bash
-npm run dev
-```
-
-ローカル開発時は、Cloudflareの本番D1/R2とは分離されたローカル状態を使用します。
-
-### 7. デプロイ
+### 5. Workerをデプロイ
 
 ```bash
 npm run deploy
 ```
 
-デプロイ後に表示される `workers.dev` のURLへアクセスします。
+### 6. GitHub Pages側へWorker URLを設定
 
-## データ構成
+`public/config.js` の
 
-### D1
+```js
+API_BASE: "https://YOUR-WORKER.workers.dev"
+```
 
-- `settings`: サイト設定・現在の曲名
-- `messages`: 文字伝言と音声伝言の一覧・メタデータ
+を、実際のWorker URLへ変更してmainへpushします。
 
-### R2
+Worker側の `WEB_ORIGIN` はすでに
 
-- `voices/<uuid>.<extension>`: 音声ファイル本体
+`https://sakai-kon.github.io`
+
+に設定してあります。
+
+## ローカル確認
+
+```bash
+npm run dev
+```
+
+ローカルのブラウザから確認する場合は、Cloudflare Worker側のCORS設定にlocalhostも許可するコードを入れています。
 
 ## セキュリティ
 
-- パスワードはWorker Secretに保存
-- ログイン成功後は署名付きHttpOnly Cookieを使用
-- 音声取得APIもログイン必須
-- R2バケットを公開バケットにする必要はありません
-- ソースコードにパスワードを保存しません
-- 音声は1ファイル10MBまで
-- 録音UIは最大60秒
+- パスワードはWorker Secret
+- セッションは署名付きトークン
+- フロントエンドにはパスワードを保存しない
+- トークンはsessionStorageに保存
+- 音声取得も認証必須
+- R2は公開バケットにしない
+- 音声1ファイル10MBまで
+- 録音は最大60秒
 
-## 今後追加しやすいもの
+## 次に追加できる機能
 
-- ソプラノ/アルトなどパート別の伝言
+- ソプラノ/アルトなどパート別伝言
 - 練習チェックリスト
-- 楽譜の画像・PDF
-- 重要なお知らせを上に固定
-- 伝言の編集
-- 管理者だけ削除可能にする権限分離
-- 音声の自動文字起こし
+- 楽譜画像・PDF
+- 重要なお知らせ固定
+- 管理者だけ削除可能
 - 練習日ごとの記録
+- 音声の文字起こし
