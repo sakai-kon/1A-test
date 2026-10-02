@@ -1,115 +1,42 @@
-# 1A 合唱練習サイト
+# 1A 合唱伝言板
 
-GitHub Pages + Supabaseで動く合唱練習サイトです。
+クラスで使う実用的な合唱用の伝言サイトです。
+
+## 今の機能
+
+- クラス共通パスワードでログイン
+- 文字の伝言を投稿
+- 音声ファイルをアップロードして共有
+- 音声ファイルは1ファイル10MBまで
+- MP3 / WAV / M4A / AAC / OGG / WebM などの音声に対応
+- 音声は非公開のSupabase Storageへ保存
+- 再生時だけ短時間の署名URLを発行
+- 合唱曲名の共有・変更
+- 最新の伝言を表示
+- 一部の設定・伝言一覧をブラウザ側にキャッシュして無駄な再読み込みを減らす
+- 伝言の削除ボタンはサイト画面に表示しない
 
 ## 構成
 
-```
+GitHub Pagesの公開元がリポジトリ直下の場合でも、ルートの index.html から現在の public/ の実用サイトへ移動するようにしています。
+
+```text
 GitHub Pages
-  └─ Web UI
-       │
-       ▼
-Supabase
-  ├─ Auth
-  │   └─ クラス用ログイン
-  ├─ Postgres
-  │   ├─ 曲名
-  │   ├─ 文字の伝言
-  │   └─ 音声メタデータ
-  └─ Storage
-      └─ 非公開の音声ファイル
+└─ 1A 合唱伝言板
+   └─ public/
+      └─ Web UI
+         └─ Supabase
+            ├─ Auth
+            ├─ Postgres
+            └─ Storage
 ```
 
-## 機能
+## Supabase
 
-- GitHub Pagesで公開
-- Supabase Authによるパスワードログイン
-- 曲名の共有
-- 文字の伝言
-- ブラウザ録音
-- 最大60秒・1ファイル10MBの音声伝言
-- 音声は非公開Storageへ保存
-- 音声再生時は短時間の署名URLを使用
-- 伝言・音声の削除
-- RLSによる認証済みユーザー限定アクセス
+ブラウザにはProject URLとPublishable Keyだけを使用します。
+Service Role Key / Secret Keyは公開サイトに置きません。
 
-10MBの音声アップロードはSupabase StorageのResumable Upload（TUS）を使います。Supabase公式も6MBを超えるファイルではResumable Uploadを推奨しています。
+## GitHub Pages
 
-## Supabaseセットアップ
-
-### 1. Supabaseプロジェクトを作る
-
-Supabaseで新しいプロジェクトを作成します。
-
-### 2. Auth用アカウントを作る
-
-このサイトではクラスで1つのAuthアカウントを共有する方式にしています。
-
-例:
-
-- Email: 自分で決めたクラス用メールアドレス
-- Password: クラスで決めたパスワード
-
-このメールアドレスはサイトの画面には表示しません。
-
-### 3. SQLを実行
-
-Supabase DashboardのSQL Editorで、
-
-`supabase/schema.sql`
-
-の内容をそのまま実行してください。
-
-これで以下が作られます。
-
-- `settings`
-- `messages`
-- `choir-audio` private bucket
-- 必要なRLSポリシー
-
-### 4. public/config.jsを設定
-
-Supabase DashboardのProject Settings → APIから、
-
-- Project URL
-- Publishable Key
-
-を取得して設定します。
-
-```js
-window.CHOIR_CONFIG = {
-  SUPABASE_URL: "https://YOUR-PROJECT.supabase.co",
-  SUPABASE_PUBLISHABLE_KEY: "YOUR-PUBLISHABLE-KEY",
-  AUTH_EMAIL: "YOUR-CLASS-LOGIN-EMAIL"
-};
-```
-
-**secret key / service role keyは絶対にGitHub Pagesへ置かないでください。**
-
-### 5. GitHub Pages
-
-GitHubのSettings → PagesでSourceをGitHub Actionsにします。
-
-mainへpushすると、
-
-`https://sakai-kon.github.io/1A-test/`
-
-で公開されます。
-
-## 音声について
-
-サイト自身が録音した音声だけを保存する設計です。
-
-10MBを超えた音声はアップロードできません。
-
-合唱曲そのものの音源ファイルを無断でアップロードするための機能にはしていません。
-
-## セキュリティ
-
-- Supabase Authでログイン
-- Postgres RLSを有効化
-- Storage bucketはprivate
-- 音声ファイルへのアクセスは認証済みユーザーのみ
-- 再生用URLは5分の署名URL
-- Publishable Keyのみブラウザへ公開
-- Supabase secret keyはブラウザへ公開しない
+GitHub Actionsを公開元として利用する構成です。
+また、Pagesがリポジトリ直下を公開する設定になっていた場合にも、ルートの index.html が古い説明ページを表示せず、現在のサイトへ移動します。
