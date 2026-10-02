@@ -12,20 +12,49 @@ const API_READY =
 
 const AUDIO_BUCKET = "choir-audio";
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
-const MAX_AUDIO_DURATION_MS = 60_000;
 
 const supabaseClient = API_READY
   ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
   : null;
 
-const state = {
-  recorder: null,
-  chunks: [],
-  blob: null,
-  stream: null,
-  startedAt: 0,
-  timerId: null
+const CACHE_TTL_MS = 60 * 1000;
+const CACHE_KEYS = {
+  settings: "choir-cache-settings-v1",
+  messages: "choir-cache-messages-v1"
 };
+
+function readCache(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    if (!cached || !Number.isFinite(cached.savedAt)) return null;
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function writeCache(key, data) {
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      savedAt: Date.now(),
+      data
+    }));
+  } catch (error) {
+    console.warn("localStorageへの保存に失敗しました。", error);
+  }
+}
+
+function isCacheFresh(cached) {
+  return Boolean(cached && Date.now() - cached.savedAt < CACHE_TTL_MS);
+}
+
+function renderSettings(settings) {
+  $("#site-title").textContent = settings.siteTitle || "1A 合唱練習サイト";
+  $("#song-title").textContent = settings.songTitle || "曲名未設定";
+  $("#song-input").value = settings.songTitle || "";
+}
 
 function showApp(loggedIn) {
   $("#login-view").classList.toggle("hidden", loggedIn);
@@ -57,8 +86,13 @@ async function requireUser() {
   return data.user;
 }
 
-async function loadSettings() {
+async function loadSettings({ force = false } = {}) {
   await requireUser();
+
+  const cached = readCache(CACHE_KEYS.settings);
+  if (cached?.data) renderSettings(cached.data);
+
+  if (!force && isCacheFresh(cached)) return;
 
   const { data, error } = await supabaseClient
     .from("settings")
@@ -67,9 +101,8 @@ async function loadSettings() {
   if (error) throw error;
 
   const settings = Object.fromEntries((data || []).map((row) => [row.key, row.value]));
-  $("#site-title").textContent = settings.siteTitle || "1A 合唱練習サイト";
-  $("#song-title").textContent = settings.songTitle || "曲名未設定";
-  $("#song-input").value = settings.songTitle || "";
+  renderSettings(settings);
+  writeCache(CACHE_KEYS.settings, settings);
 }
 
 async function loadProtectedAudio(audio, path) {
@@ -154,7 +187,7 @@ function renderMessages(items) {
           .eq("id", item.id);
 
         if (error) throw error;
-        await loadMessages();
+        await loadMessages({ force: true });
       } catch (error) {
         alert(error.message);
       }
@@ -164,8 +197,13 @@ function renderMessages(items) {
   }
 }
 
-async function loadMessages() {
+async function loadMessages({ force = false } = {}) {
   await requireUser();
+
+  const cached = readCache(CACHE_KEYS.messages);
+  if (cached?.data) renderMessages(cached.data);
+
+  if (!force && isCacheFresh(cached)) return;
 
   const { data, error } = await supabaseClient
     .from("messages")
@@ -174,7 +212,9 @@ async function loadMessages() {
     .limit(100);
 
   if (error) throw error;
-  renderMessages(data || []);
+  const messages = data || [];
+  renderMessages(messages);
+  writeCache(CACHE_KEYS.messages, messages);
 }
 
 async function initialize() {
@@ -230,7 +270,7 @@ $("#logout-button").addEventListener("click", async () => {
 
 $("#reload-button").addEventListener("click", async () => {
   try {
-    await Promise.all([loadSettings(), loadMessages()]);
+    await Promise.all([loadSettings({ force: true }), loadMessages({ force: true })]);
   } catch (error) {
     alert(error.message);
   }
@@ -249,7 +289,7 @@ $("#song-form").addEventListener("submit", async (event) => {
       .upsert({ key: "songTitle", value: songTitle });
 
     if (error) throw error;
-    await loadSettings();
+    await loadSettings({ force: true });
   } catch (error) {
     alert(error.message);
   }
