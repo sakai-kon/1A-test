@@ -1,9 +1,8 @@
 window.CHOIR_CONFIG = {
-  // Supabase Project Settings > API から設定します。
-  SUPABASE_URL: "https://YOUR-PROJECT.supabase.co",
-  SUPABASE_PUBLISHABLE_KEY: "YOUR-PUBLISHABLE-KEY",
+  // Supabase Project Settings > API
+  SUPABASE_URL: "https://jwizoczvtuxqtyxtbson.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_YT8SDemf956-YHvSxwC4ZA_6yV7Q175",
 
-  // クラス用Supabase Authアカウントのメールアドレス。
-  // 画面には表示せず、このアカウントでパスワードログインします。
+  // Supabase Authで作成するクラス用ログインアカウント
   AUTH_EMAIL: "YOUR-CLASS-LOGIN-EMAIL"
 };
