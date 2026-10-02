@@ -3,10 +3,6 @@
   "name": "1a-choir-practice",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "assets": {
-    "directory": "./public",
-    "binding": "ASSETS"
-  },
   "d1_databases": [
     {
       "binding": "DB",
@@ -21,6 +17,7 @@
     }
   ],
   "vars": {
-    "SESSION_TTL_SECONDS": "43200"
+    "SESSION_TTL_SECONDS": "43200",
+    "WEB_ORIGIN": "https://sakai-kon.github.io"
   }
 }
