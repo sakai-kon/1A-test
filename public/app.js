@@ -112,6 +112,7 @@ function renderMessages(items) {
     const title = node.querySelector(".message-title");
     const body = node.querySelector(".message-body");
     const audio = node.querySelector(".message-audio");
+    const loadAudioButton = node.querySelector(".load-audio");
     const deleteButton = node.querySelector(".delete-button");
 
     node.querySelector(".message-author").textContent = item.author || "匿名";
@@ -124,8 +125,22 @@ function renderMessages(items) {
     body.textContent = item.type === "voice" ? "" : item.body;
 
     if (item.type === "voice") {
-      audio.addEventListener("play", () => loadProtectedAudio(audio, item.audioUrl), { once: true });
+      loadAudioButton.addEventListener("click", async () => {
+        loadAudioButton.disabled = true;
+        loadAudioButton.textContent = "読み込み中…";
+        try {
+          await loadProtectedAudio(audio, item.audioUrl);
+          loadAudioButton.classList.add("hidden");
+          audio.classList.remove("hidden");
+          await audio.play();
+        } catch (error) {
+          alert(error.message);
+          loadAudioButton.disabled = false;
+          loadAudioButton.textContent = "▶ 音声を再生";
+        }
+      });
     } else {
+      loadAudioButton.remove();
       audio.remove();
     }
 
