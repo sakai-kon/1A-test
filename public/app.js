@@ -14,6 +14,7 @@ const CACHE_KEYS = { settings: "choir-cache-settings-v3", messages: "choir-cache
 let isAdmin = false;
 let realtimeChannel = null;
 let selectedVoiceFile = null;
+let navObserver = null;
 
 function cacheRead(key) {
   try {
@@ -233,6 +234,7 @@ function renderMessages(items) {
 
 function setupSectionNavigation() {
   const links = [...document.querySelectorAll(".nav-item[data-target]")];
+  if (navObserver) navObserver.disconnect();
   const sections = links.map(link => document.getElementById(link.dataset.target)).filter(Boolean);
   if (!sections.length || !("IntersectionObserver" in window)) return;
 
@@ -248,6 +250,7 @@ function setupSectionNavigation() {
   }, { rootMargin:"-25% 0px -55% 0px", threshold:[0.1,0.3,0.6] });
 
   sections.forEach(section => observer.observe(section));
+  navObserver = observer;
 }
 
 function resetVoice() {
