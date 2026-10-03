@@ -263,12 +263,29 @@ function resetVoice() {
 }
 
 $("#login-form").addEventListener("submit", async e => {
-  e.preventDefault(); $("#login-error").textContent = "";
+  e.preventDefault();
+  $("#login-error").textContent = "";
+  const button = e.submitter;
+  if (button) button.disabled = true;
+
   try {
-    const { error } = await supabaseClient.auth.signInWithPassword({ email: AUTH_EMAIL, password: $("#password").value });
+    const { error } = await supabaseClient.auth.signInWithPassword({
+      email: AUTH_EMAIL,
+      password: $("#password").value
+    });
     if (error) throw error;
-    $("#password").value = ""; await initialize();
-  } catch { $("#login-error").textContent = "ログインできませんでした。パスワードを確認してください。"; }
+
+    $("#password").value = "";
+    await initialize();
+  } catch (err) {
+    console.error("ログイン処理エラー:", err);
+    $("#login-error").textContent =
+      err?.message?.toLowerCase?.().includes("invalid login credentials")
+        ? "パスワードが違います。"
+        : "ログイン後の読み込みに失敗しました。もう一度お試しください。";
+  } finally {
+    if (button) button.disabled = false;
+  }
 });
 
 $("#show-admin-login").addEventListener("click", () => {
@@ -454,17 +471,55 @@ async function subscribeRealtime() {
 }
 
 async function initialize() {
-  if (!API_READY) { $("#setup-warning").classList.remove("hidden"); showApp(false); return; }
+  if (!API_READY) {
+    $("#setup-warning").classList.remove("hidden");
+    showApp(false);
+    return;
+  }
+
   $("#setup-warning").classList.add("hidden");
-  const { data } = await supabaseClient.auth.getSession();
-  if (!data.session) { showApp(false); return; }
+  const { data, error } = await supabaseClient.auth.getSession();
+
+  if (error) {
+    console.error("セッション確認エラー:", error);
+    showApp(false);
+    return;
+  }
+
+  if (!data.session) {
+    showApp(false);
+    return;
+  }
+
+  // 認証済みなら、まずアプリ画面を表示する。
+  // データ取得が一時的に失敗しても「ログイン失敗」とは扱わない。
+  showApp(true);
+  setupSectionNavigation();
+
   try {
     await refreshRole();
-    await Promise.all([loadSettings(), loadMessages()]);
     showApp(true);
-    setupSectionNavigation();
+  } catch (err) {
+    console.error("権限確認エラー:", err);
+  }
+
+  try {
+    await loadSettings();
+  } catch (err) {
+    console.error("設定読み込みエラー:", err);
+  }
+
+  try {
+    await loadMessages();
+  } catch (err) {
+    console.error("伝言読み込みエラー:", err);
+  }
+
+  try {
     await subscribeRealtime();
-  } catch (err) { console.error(err); showApp(false); }
+  } catch (err) {
+    console.error("Realtime接続エラー:", err);
+  }
 }
 
 if (supabaseClient) supabaseClient.auth.onAuthStateChange((_event, session) => {
