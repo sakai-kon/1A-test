@@ -1,136 +1,121 @@
-const $ = (selector) => document.querySelector(selector);
+const $ = (s) => document.querySelector(s);
 const CONFIG = window.CHOIR_CONFIG || {};
 const SUPABASE_URL = String(CONFIG.SUPABASE_URL || "").replace(/\/$/, "");
 const SUPABASE_KEY = String(CONFIG.SUPABASE_PUBLISHABLE_KEY || "");
 const AUTH_EMAIL = String(CONFIG.AUTH_EMAIL || "");
-const API_READY =
-  /^https:\/\/[^/]+\.supabase\.co$/.test(SUPABASE_URL) &&
-  SUPABASE_KEY &&
-  AUTH_EMAIL &&
-  !SUPABASE_URL.includes("YOUR-PROJECT") &&
-  !SUPABASE_KEY.includes("YOUR-PUBLISHABLE");
-
 const AUDIO_BUCKET = "choir-audio";
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
-
-const supabaseClient = API_READY
-  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
-  : null;
-
+const MIN_AUDIO_DURATION_MS = 60 * 1000;
 const CACHE_TTL_MS = 60 * 1000;
-const CACHE_KEYS = {
-  settings: "choir-cache-settings-v1",
-  messages: "choir-cache-messages-v1"
-};
+const API_READY = /^https:\/\/[^/]+\.supabase\.co$/.test(SUPABASE_URL) && SUPABASE_KEY && AUTH_EMAIL;
 
-function readCache(key) {
+const supabaseClient = API_READY ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const CACHE_KEYS = { settings: "choir-cache-settings-v3", messages: "choir-cache-messages-v3" };
+let isAdmin = false;
+let realtimeChannel = null;
+let selectedVoiceFile = null;
+
+function cacheRead(key) {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const cached = JSON.parse(raw);
-    if (!cached || !Number.isFinite(cached.savedAt)) return null;
-    return cached;
-  } catch {
-    return null;
-  }
+    const v = JSON.parse(localStorage.getItem(key) || "null");
+    return v && Number.isFinite(v.savedAt) ? v : null;
+  } catch { return null; }
 }
-
-function writeCache(key, data) {
-  try {
-    localStorage.setItem(key, JSON.stringify({
-      savedAt: Date.now(),
-      data
-    }));
-  } catch (error) {
-    console.warn("localStorageへの保存に失敗しました。", error);
-  }
+function cacheWrite(key, data) {
+  try { localStorage.setItem(key, JSON.stringify({ savedAt: Date.now(), data })); } catch {}
 }
+function fresh(v) { return !!v && Date.now() - v.savedAt < CACHE_TTL_MS; }
 
-function isCacheFresh(cached) {
-  return Boolean(cached && Date.now() - cached.savedAt < CACHE_TTL_MS);
-}
-
-function renderSettings(settings) {
-  $("#site-title").textContent = settings.siteTitle || "1A 合唱練習サイト";
-  $("#song-title").textContent = settings.songTitle || "曲名未設定";
-  $("#song-input").value = settings.songTitle || "";
+function renderSettings(s) {
+  $("#site-title").textContent = s.siteTitle || "1A 合唱伝言板";
+  $("#song-title").textContent = s.songTitle || "曲名未設定";
+  $("#site-input").value = s.siteTitle || "";
+  $("#song-input").value = s.songTitle || "";
 }
 
 function showApp(loggedIn) {
   $("#login-view").classList.toggle("hidden", loggedIn);
+  $("#admin-login-view").classList.add("hidden");
   $("#app-view").classList.toggle("hidden", !loggedIn);
   $("#logout-button").classList.toggle("hidden", !loggedIn);
+  $("#role-badge").classList.toggle("hidden", !loggedIn);
+  $("#role-badge").textContent = isAdmin ? "管理者" : "メンバー";
+  $("#admin-panel").classList.toggle("hidden", !isAdmin);
+  $(".audio-post").classList.toggle("hidden", !isAdmin);
 }
 
-function formatDate(value) {
-  return new Date(value).toLocaleString("ja-JP", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+async function user() {
+  if (!supabaseClient) return null;
+  const { data } = await supabaseClient.auth.getUser();
+  return data.user || null;
 }
 
+async function refreshRole() {
+  const u = await user();
+  isAdmin = false;
+  if (!u) return;
+  const { data } = await supabaseClient.from("admins").select("user_id").eq("user_id", u.id).maybeSingle();
+  isAdmin = !!data;
+}
+
+function formatDate(v) {
+  return new Date(v).toLocaleString("ja-JP", { month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit" });
+}
 function formatDuration(ms) {
-  const total = Math.max(0, Math.round(Number(ms || 0) / 1000));
-  return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+  const s = Math.max(0, Math.round(Number(ms || 0) / 1000));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
 }
 
 async function requireUser() {
-  if (!supabaseClient) throw new Error("Supabaseが未設定です。");
-  const { data, error } = await supabaseClient.auth.getUser();
-  if (error || !data.user) {
-    showApp(false);
-    throw new Error("ログインが必要です。");
-  }
-  return data.user;
+  const u = await user();
+  if (!u) throw new Error("ログインが必要です。");
+  return u;
+}
+async function requireAdmin() {
+  const u = await requireUser();
+  if (!isAdmin) throw new Error("管理者権限が必要です。");
+  return u;
 }
 
-async function loadSettings({ force = false } = {}) {
+async function loadSettings(force=false) {
   await requireUser();
-
-  const cached = readCache(CACHE_KEYS.settings);
-  if (cached?.data) renderSettings(cached.data);
-
-  if (!force && isCacheFresh(cached)) return;
-
-  const { data, error } = await supabaseClient
-    .from("settings")
-    .select("key,value");
-
+  const c = cacheRead(CACHE_KEYS.settings);
+  if (c?.data) renderSettings(c.data);
+  if (!force && fresh(c)) return;
+  const { data, error } = await supabaseClient.from("settings").select("key,value");
   if (error) throw error;
-
-  const settings = Object.fromEntries((data || []).map((row) => [row.key, row.value]));
-  renderSettings(settings);
-  writeCache(CACHE_KEYS.settings, settings);
+  const s = Object.fromEntries((data || []).map(r => [r.key, r.value]));
+  renderSettings(s);
+  cacheWrite(CACHE_KEYS.settings, s);
 }
 
-async function loadProtectedAudio(audio, path) {
-  if (audio.dataset.loaded === "true") return;
-
-  const { data, error } = await supabaseClient
-    .storage
-    .from(AUDIO_BUCKET)
-    .createSignedUrl(path, 300);
-
+async function signedAudio(audio, path) {
+  const { data, error } = await supabaseClient.storage.from(AUDIO_BUCKET).createSignedUrl(path, 300);
   if (error) throw error;
-
   audio.src = data.signedUrl;
   audio.dataset.loaded = "true";
 }
 
+async function loadMessages(force=false) {
+  await requireUser();
+  const c = cacheRead(CACHE_KEYS.messages);
+  if (c?.data) renderMessages(c.data);
+  if (!force && fresh(c)) return;
+  const { data, error } = await supabaseClient.from("messages")
+    .select("id,type,author,title,body,object_path,mime_type,size_bytes,duration_ms,created_at")
+    .order("created_at", { ascending:false }).limit(100);
+  if (error) throw error;
+  renderMessages(data || []);
+  cacheWrite(CACHE_KEYS.messages, data || []);
+}
+
 function renderMessages(items) {
-  const container = $("#messages");
-  container.replaceChildren();
-
+  const root = $("#messages");
+  root.replaceChildren();
   if (!items.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty";
-    empty.textContent = "まだ伝言はありません。";
-    container.appendChild(empty);
-    return;
+    const p = document.createElement("p");
+    p.className = "empty"; p.textContent = "まだ伝言はありません。"; root.appendChild(p); return;
   }
-
   for (const item of items) {
     const node = $("#message-template").content.cloneNode(true);
     const article = node.querySelector(".message");
@@ -139,170 +124,36 @@ function renderMessages(items) {
     const title = node.querySelector(".message-title");
     const body = node.querySelector(".message-body");
     const audio = node.querySelector(".message-audio");
-    const loadAudioButton = node.querySelector(".load-audio");
-
+    const play = node.querySelector(".load-audio");
+    const del = node.querySelector(".delete-button");
     author.textContent = item.author || "匿名";
     time.textContent = formatDate(item.created_at);
+    del.classList.toggle("hidden", !isAdmin);
+    del.onclick = async () => {
+      if (!isAdmin || !confirm("この伝言を削除しますか？")) return;
+      const { error } = await supabaseClient.from("messages").delete().eq("id", item.id);
+      if (error) throw error;
+      if (item.object_path) await supabaseClient.storage.from(AUDIO_BUCKET).remove([item.object_path]);
+      await loadMessages(true);
+    };
 
     if (item.type === "voice") {
       title.textContent = item.title || "音声伝言";
-      body.textContent = [
-        formatDuration(item.duration_ms),
-        item.size_bytes ? (item.size_bytes / 1024 / 1024).toFixed(1) + "MB" : ""
-      ].filter(Boolean).join(" ・ ");
-
-      loadAudioButton.addEventListener("click", async () => {
-        loadAudioButton.disabled = true;
-        loadAudioButton.textContent = "読み込み中…";
-        try {
-          await loadProtectedAudio(audio, item.object_path);
-          audio.classList.remove("hidden");
-          await audio.play();
-        } catch (error) {
-          alert("音声を再生できませんでした。");
-          console.error(error);
-        } finally {
-          loadAudioButton.disabled = false;
-          loadAudioButton.textContent = "▶ 音声を再生";
-        }
-      });
+      body.textContent = [formatDuration(item.duration_ms), item.size_bytes ? (item.size_bytes/1024/1024).toFixed(1)+"MB" : ""].filter(Boolean).join(" ・ ");
+      play.onclick = async () => {
+        play.disabled = true; play.textContent = "読み込み中…";
+        try { await signedAudio(audio, item.object_path); audio.classList.remove("hidden"); await audio.play(); }
+        catch (e) { alert("音声を再生できませんでした。"); console.error(e); }
+        finally { play.disabled = false; play.textContent = "▶ 音声を再生"; }
+      };
     } else {
-      title.classList.add("hidden");
-      body.textContent = item.body || "";
-      loadAudioButton.classList.add("hidden");
-      audio.classList.add("hidden");
+      title.classList.add("hidden"); play.classList.add("hidden"); audio.classList.add("hidden"); body.textContent = item.body || "";
     }
-
-    container.appendChild(article);
-  }
-}
-async function loadMessages({ force = false } = {}) {
-  await requireUser();
-
-  const cached = readCache(CACHE_KEYS.messages);
-  if (cached?.data) renderMessages(cached.data);
-
-  if (!force && isCacheFresh(cached)) return;
-
-  const { data, error } = await supabaseClient
-    .from("messages")
-    .select("id,type,author,title,body,object_path,mime_type,size_bytes,duration_ms,created_at")
-    .order("created_at", { ascending: false })
-    .limit(100);
-
-  if (error) throw error;
-  const messages = data || [];
-  renderMessages(messages);
-  writeCache(CACHE_KEYS.messages, messages);
-}
-
-async function initialize() {
-  if (!API_READY) {
-    $("#setup-warning").classList.remove("hidden");
-    showApp(false);
-    return;
-  }
-
-  $("#setup-warning").classList.add("hidden");
-
-  const { data } = await supabaseClient.auth.getSession();
-  if (!data.session) {
-    showApp(false);
-    return;
-  }
-
-  try {
-    await Promise.all([loadSettings(), loadMessages()]);
-    showApp(true);
-  } catch (error) {
-    console.error(error);
-    showApp(false);
+    root.appendChild(article);
   }
 }
 
-$("#login-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  $("#login-error").textContent = "";
-
-  if (!API_READY) return;
-
-  try {
-    const { error } = await supabaseClient.auth.signInWithPassword({
-      email: AUTH_EMAIL,
-      password: $("#password").value
-    });
-
-    if (error) throw error;
-
-    $("#password").value = "";
-    await initialize();
-  } catch (error) {
-    $("#login-error").textContent = "ログインできませんでした。パスワードを確認してください。";
-    console.error(error);
-  }
-});
-
-$("#logout-button").addEventListener("click", async () => {
-  if (supabaseClient) await supabaseClient.auth.signOut();
-  showApp(false);
-});
-
-$("#reload-button").addEventListener("click", async () => {
-  try {
-    await Promise.all([loadSettings({ force: true }), loadMessages({ force: true })]);
-  } catch (error) {
-    alert(error.message);
-  }
-});
-
-$("#song-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  try {
-    await requireUser();
-    const songTitle = $("#song-input").value.trim();
-    if (!songTitle) throw new Error("曲名を入力してください。");
-
-    const { error } = await supabaseClient
-      .from("settings")
-      .upsert({ key: "songTitle", value: songTitle });
-
-    if (error) throw error;
-    await loadSettings({ force: true });
-  } catch (error) {
-    alert(error.message);
-  }
-});
-
-$("#message-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-
-  try {
-    const user = await requireUser();
-    const body = $("#message-body").value.trim();
-    if (!body) throw new Error("本文を入力してください。");
-
-    const { error } = await supabaseClient
-      .from("messages")
-      .insert({
-        type: "text",
-        author: $("#message-author").value.trim() || "匿名",
-        body,
-        user_id: user.id
-      });
-
-    if (error) throw error;
-
-    $("#message-body").value = "";
-    await loadMessages();
-  } catch (error) {
-    alert(error.message);
-  }
-});
-
-let selectedVoiceFile = null;
-
-function resetVoiceFile() {
+function resetVoice() {
   selectedVoiceFile = null;
   $("#voice-file").value = "";
   $("#voice-form").reset();
@@ -311,148 +162,159 @@ function resetVoiceFile() {
   $("#recording-preview").removeAttribute("src");
 }
 
-$("#voice-file").addEventListener("change", async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) {
-    resetVoiceFile();
-    return;
-  }
-
-  $("#recording-status").textContent = "";
-
-  if (!file.type.startsWith("audio/")) {
-    resetVoiceFile();
-    $("#recording-status").textContent = "音声ファイルを選択してください。";
-    return;
-  }
-
-  if (file.size > MAX_AUDIO_BYTES) {
-    resetVoiceFile();
-    $("#recording-status").textContent = "10MBを超えているため保存できません。";
-    return;
-  }
-
+$("#login-form").addEventListener("submit", async e => {
+  e.preventDefault(); $("#login-error").textContent = "";
   try {
-    const previewUrl = URL.createObjectURL(file);
-    const audio = new Audio();
-    audio.preload = "metadata";
+    const { error } = await supabaseClient.auth.signInWithPassword({ email: AUTH_EMAIL, password: $("#password").value });
+    if (error) throw error;
+    $("#password").value = ""; await initialize();
+  } catch { $("#login-error").textContent = "ログインできませんでした。パスワードを確認してください。"; }
+});
 
-    await new Promise((resolve, reject) => {
-      audio.onloadedmetadata = resolve;
-      audio.onerror = () => reject(new Error("音声ファイルを読み込めませんでした。"));
-      audio.src = previewUrl;
+$("#show-admin-login").addEventListener("click", () => {
+  $("#login-view").classList.add("hidden");
+  $("#admin-login-view").classList.remove("hidden");
+});
+$("#back-to-login").addEventListener("click", () => {
+  $("#admin-login-view").classList.add("hidden");
+  $("#login-view").classList.remove("hidden");
+});
+$("#admin-login-form").addEventListener("submit", async e => {
+  e.preventDefault(); $("#admin-login-error").textContent = "";
+  try {
+    const { error } = await supabaseClient.auth.signInWithPassword({ email: $("#admin-email").value.trim(), password: $("#admin-password").value });
+    if (error) throw error;
+    await initialize();
+    if (!isAdmin) { await supabaseClient.auth.signOut(); throw new Error("管理者として登録されていません。"); }
+    $("#admin-password").value = "";
+  } catch (err) {
+    $("#admin-login-error").textContent = err.message === "管理者として登録されていません。" ? err.message : "管理者ログインに失敗しました。";
+  }
+});
+
+$("#logout-button").addEventListener("click", async () => {
+  if (realtimeChannel) { await supabaseClient.removeChannel(realtimeChannel); realtimeChannel = null; }
+  await supabaseClient.auth.signOut(); isAdmin = false; showApp(false);
+});
+
+$("#reload-button").addEventListener("click", () => Promise.all([loadSettings(true), loadMessages(true)]).catch(e => alert(e.message)));
+
+$("#site-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await requireAdmin();
+    const siteTitle = $("#site-input").value.trim();
+    const songTitle = $("#song-input").value.trim();
+    if (!siteTitle) throw new Error("サイト名を入力してください。");
+    const { error } = await supabaseClient.from("settings").upsert([
+      { key:"siteTitle", value:siteTitle }, { key:"songTitle", value:songTitle }
+    ], { onConflict:"key" });
+    if (error) throw error;
+    await loadSettings(true);
+  } catch (err) { alert(err.message); }
+});
+
+$("#message-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    const u = await requireUser();
+    const body = $("#message-body").value.trim();
+    if (!body) throw new Error("本文を入力してください。");
+    const { error } = await supabaseClient.from("messages").insert({
+      type:"text", author:$("#message-author").value.trim() || "匿名", body, user_id:u.id
     });
+    if (error) throw error;
+    $("#message-author").value = ""; $("#message-body").value = "";
+    await loadMessages(true);
+  } catch (err) { alert(err.message); }
+});
 
-    const durationMs = Math.round(audio.duration * 1000);
-    URL.revokeObjectURL(previewUrl);
-
-    if (!Number.isFinite(durationMs) || durationMs <= 0) {
-      resetVoiceFile();
-      $("#recording-status").textContent = "音声の長さを確認できませんでした。";
-      return;
-    }
-
+$("#voice-file").addEventListener("change", async e => {
+  if (!isAdmin) return resetVoice();
+  const file = e.target.files?.[0];
+  if (!file) return resetVoice();
+  $("#recording-status").textContent = "";
+  if (!file.type.startsWith("audio/")) return resetVoice(), $("#recording-status").textContent = "音声ファイルを選択してください。";
+  if (file.size > MAX_AUDIO_BYTES) return resetVoice(), $("#recording-status").textContent = "10MBを超えているため保存できません。";
+  try {
+    const url = URL.createObjectURL(file), a = new Audio(); a.preload = "metadata";
+    await new Promise((resolve,reject) => { a.onloadedmetadata=resolve; a.onerror=()=>reject(new Error("音声ファイルを読み込めませんでした。")); a.src=url; });
+    const durationMs = Math.round(a.duration*1000); URL.revokeObjectURL(url);
+    if (!Number.isFinite(durationMs) || durationMs <= MIN_AUDIO_DURATION_MS) return resetVoice(), $("#recording-status").textContent = "音声は60秒を超えている必要があります。";
     selectedVoiceFile = file;
     $("#recording-preview").src = URL.createObjectURL(file);
     $("#recording-preview").classList.remove("hidden");
     $("#voice-form").classList.remove("hidden");
     $("#voice-form").dataset.durationMs = String(durationMs);
-    $("#recording-status").textContent =
-      `${file.name}（${formatDuration(durationMs)} / ${(file.size / 1024 / 1024).toFixed(1)}MB）を選択しました。`;
-  } catch (error) {
-    resetVoiceFile();
-    $("#recording-status").textContent = error.message || "音声ファイルを確認できませんでした。";
-  }
+    $("#recording-status").textContent = file.name + "（" + formatDuration(durationMs) + " / " + (file.size/1024/1024).toFixed(1) + "MB）を選択しました。";
+  } catch (err) { resetVoice(); $("#recording-status").textContent = err.message; }
 });
 
-async function uploadVoice(file, objectPath) {
-  const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
-  if (sessionError || !sessionData.session) throw new Error("ログインが必要です。");
-
-  if (!window.tus?.Upload) {
-    throw new Error("大容量アップロード機能の読み込みに失敗しました。");
-  }
-
-  const projectRef = new URL(SUPABASE_URL).hostname.split(".")[0];
-  const endpoint = `https://${projectRef}.storage.supabase.co/storage/v1/upload/resumable`;
-  const token = sessionData.session.access_token;
-
-  await new Promise((resolve, reject) => {
+async function uploadVoice(file, path) {
+  await requireAdmin();
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error || !data.session) throw new Error("ログインが必要です。");
+  if (!window.tus?.Upload) throw new Error("大容量アップロード機能の読み込みに失敗しました。");
+  const ref = new URL(SUPABASE_URL).hostname.split(".")[0];
+  await new Promise((resolve,reject) => {
     const upload = new tus.Upload(file, {
-      endpoint,
-      retryDelays: [0, 1000, 3000, 5000],
-      chunkSize: 6 * 1024 * 1024,
-      uploadDataDuringCreation: true,
-      removeFingerprintOnSuccess: true,
-      metadata: {
-        bucketName: AUDIO_BUCKET,
-        objectName: objectPath,
-        contentType: file.type,
-        cacheControl: "3600"
-      },
-      headers: {
-        Authorization: `Bearer ${token}`,
-        apikey: SUPABASE_KEY
-      },
-      onError: reject,
-      onProgress: (bytesUploaded, bytesTotal) => {
-        const percent = Math.floor((bytesUploaded / bytesTotal) * 100);
-        $("#recording-status").textContent = `アップロード中… ${percent}%`;
-      },
-      onSuccess: resolve
+      endpoint: "https://" + ref + ".storage.supabase.co/storage/v1/upload/resumable",
+      retryDelays:[0,1000,3000,5000], chunkSize:6*1024*1024,
+      uploadDataDuringCreation:true, removeFingerprintOnSuccess:true,
+      metadata:{bucketName:AUDIO_BUCKET, objectName:path, contentType:file.type, cacheControl:"3600"},
+      headers:{Authorization:"Bearer "+data.session.access_token, apikey:SUPABASE_KEY},
+      onError:reject,
+      onProgress:(up,total)=>$("#recording-status").textContent="アップロード中… "+Math.floor(up/total*100)+"%",
+      onSuccess:resolve
     });
-
     upload.start();
   });
 }
 
-$("#voice-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!selectedVoiceFile) return;
-
+$("#voice-form").addEventListener("submit", async e => {
+  e.preventDefault(); if (!selectedVoiceFile || !isAdmin) return;
   try {
-    const user = await requireUser();
+    await requireAdmin();
+    const durationMs = Number($("#voice-form").dataset.durationMs || 0);
+    if (durationMs <= MIN_AUDIO_DURATION_MS) throw new Error("音声は60秒を超えている必要があります。");
     const id = crypto.randomUUID();
-    const extension = (selectedVoiceFile.name.split(".").pop() || "audio")
-      .replace(/[^a-z0-9]+/gi, "") || "audio";
-    const objectPath = `voices/${id}.${extension}`;
-
-    $("#recording-status").textContent = "アップロードを開始しています…";
-    await uploadVoice(selectedVoiceFile, objectPath);
-
-    const { error } = await supabaseClient
-      .from("messages")
-      .insert({
-        id,
-        type: "voice",
-        author: $("#voice-author").value.trim() || "匿名",
-        title: $("#voice-title").value.trim() || "音声伝言",
-        body: "",
-        object_path: objectPath,
-        mime_type: selectedVoiceFile.type || "application/octet-stream",
-        size_bytes: selectedVoiceFile.size,
-        duration_ms: Number($("#voice-form").dataset.durationMs || 0),
-        user_id: user.id
-      });
-
-    if (error) {
-      await supabaseClient.storage.from(AUDIO_BUCKET).remove([objectPath]);
-      throw error;
-    }
-
-    resetVoiceFile();
-    $("#recording-status").textContent = "音声を保存しました。";
-    await loadMessages();
-  } catch (error) {
-    $("#recording-status").textContent = error.message || "音声の保存に失敗しました。";
-    console.error(error);
-  }
+    const ext = (selectedVoiceFile.name.split(".").pop() || "audio").replace(/[^a-z0-9]+/gi,"") || "audio";
+    const path = "voices/" + id + "." + ext;
+    await uploadVoice(selectedVoiceFile, path);
+    const { error } = await supabaseClient.from("messages").insert({
+      id,type:"voice",author:$("#voice-author").value.trim() || "管理者",
+      title:$("#voice-title").value.trim() || "音声伝言",body:"",
+      object_path:path,mime_type:selectedVoiceFile.type || "application/octet-stream",
+      size_bytes:selectedVoiceFile.size,duration_ms:durationMs,user_id:(await requireAdmin()).id
+    });
+    if (error) { await supabaseClient.storage.from(AUDIO_BUCKET).remove([path]); throw error; }
+    resetVoice(); $("#recording-status").textContent="音声を保存しました。"; await loadMessages(true);
+  } catch (err) { $("#recording-status").textContent = err.message || "音声の保存に失敗しました。"; }
 });
 
-if (supabaseClient) {
-  supabaseClient.auth.onAuthStateChange((_event, session) => {
-    if (!session) showApp(false);
-  });
+async function subscribeRealtime() {
+  if (realtimeChannel) return;
+  realtimeChannel = supabaseClient.channel("choir-live")
+    .on("postgres_changes",{event:"*",schema:"public",table:"messages"},()=>loadMessages(true).catch(console.error))
+    .on("postgres_changes",{event:"*",schema:"public",table:"settings"},()=>loadSettings(true).catch(console.error))
+    .subscribe();
 }
+
+async function initialize() {
+  if (!API_READY) { $("#setup-warning").classList.remove("hidden"); showApp(false); return; }
+  $("#setup-warning").classList.add("hidden");
+  const { data } = await supabaseClient.auth.getSession();
+  if (!data.session) { showApp(false); return; }
+  try {
+    await refreshRole();
+    await Promise.all([loadSettings(), loadMessages()]);
+    showApp(true);
+    await subscribeRealtime();
+  } catch (err) { console.error(err); showApp(false); }
+}
+
+if (supabaseClient) supabaseClient.auth.onAuthStateChange((_event, session) => {
+  if (!session) { isAdmin=false; showApp(false); }
+});
 
 initialize();
