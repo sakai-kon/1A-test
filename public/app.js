@@ -94,8 +94,30 @@ async function loadSettings(force=false) {
 }
 
 async function signedAudio(audio, path) {
-  const { data, error } = await supabaseClient.storage.from(AUDIO_BUCKET).createSignedUrl(path, 300);
+  const cacheKey = "choir-audio-url-v1:" + path;
+  const now = Date.now();
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(cacheKey) || "null");
+    if (cached?.url && Number.isFinite(cached.expiresAt) && cached.expiresAt > now + 15000) {
+      audio.src = cached.url;
+      audio.dataset.loaded = "true";
+      return;
+    }
+  } catch {}
+
+  const expiresIn = 3600;
+  const { data, error } = await supabaseClient.storage
+    .from(AUDIO_BUCKET)
+    .createSignedUrl(path, expiresIn);
   if (error) throw error;
+
+  try {
+    sessionStorage.setItem(cacheKey, JSON.stringify({
+      url: data.signedUrl,
+      expiresAt: now + expiresIn * 1000
+    }));
+  } catch {}
+
   audio.src = data.signedUrl;
   audio.dataset.loaded = "true";
 }
