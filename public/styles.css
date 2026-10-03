@@ -122,3 +122,12 @@ h1{margin:0;font-size:clamp(1.45rem,4vw,1.9rem);line-height:1.15;letter-spacing:
   .message-head time{font-size:.72rem}
 }
 
+
+body:has(#login-view:not(.hidden)) .hero,
+body:has(#admin-login-view:not(.hidden)) .hero{justify-content:center;padding-bottom:0}
+body:has(#login-view:not(.hidden)) .eyebrow,
+body:has(#login-view:not(.hidden)) .current-song,
+body:has(#admin-login-view:not(.hidden)) .eyebrow,
+body:has(#admin-login-view:not(.hidden)) .current-song{display:none}
+body:has(#login-view:not(.hidden)) .brand h1,
+body:has(#admin-login-view:not(.hidden)) .brand h1{text-align:center}
