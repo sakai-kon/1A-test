@@ -232,25 +232,36 @@ function renderMessages(items) {
   $("#song-list-label").textContent = songs.length + "曲";
 }
 
-function setupSectionNavigation() {
-  const links = [...document.querySelectorAll(".nav-item[data-target]")];
-  if (navObserver) navObserver.disconnect();
-  const sections = links.map(link => document.getElementById(link.dataset.target)).filter(Boolean);
-  if (!sections.length || !("IntersectionObserver" in window)) return;
+function setupPageNavigation() {
+  const links = [...document.querySelectorAll(".nav-item[data-page]")];
+  const pages = [...document.querySelectorAll(".page-view[id]")];
 
-  const setActive = id => {
-    links.forEach(link => link.classList.toggle("active", link.dataset.target === id));
+  if (!links.length || !pages.length) return;
+
+  const showPage = (pageId, updateHash = true) => {
+    const target = document.getElementById(pageId);
+    if (!target) return;
+
+    links.forEach(link => {
+      link.classList.toggle("active", link.dataset.page === pageId);
+    });
+
+    pages.forEach(page => {
+      const active = page.id === pageId;
+      page.classList.toggle("active-page", active);
+      page.classList.toggle("hidden", !active);
+    });
+
+    if (updateHash) history.replaceState(null, "", "#" + pageId);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const observer = new IntersectionObserver(entries => {
-    const visible = entries
-      .filter(entry => entry.isIntersecting)
-      .sort((a,b) => b.intersectionRatio - a.intersectionRatio)[0];
-    if (visible) setActive(visible.target.id);
-  }, { rootMargin:"-25% 0px -55% 0px", threshold:[0.1,0.3,0.6] });
+  links.forEach(link => {
+    link.addEventListener("click", () => showPage(link.dataset.page));
+  });
 
-  sections.forEach(section => observer.observe(section));
-  navObserver = observer;
+  const hash = location.hash.replace(/^#/, "");
+  showPage(document.getElementById(hash) ? hash : "comments-page", false);
 }
 
 function resetVoice() {
@@ -494,7 +505,7 @@ async function initialize() {
   // 認証済みなら、まずアプリ画面を表示する。
   // データ取得が一時的に失敗しても「ログイン失敗」とは扱わない。
   showApp(true);
-  setupSectionNavigation();
+  setupPageNavigation();
 
   try {
     await refreshRole();
