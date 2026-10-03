@@ -14,7 +14,7 @@
         <h1 id="site-title">1A 合唱伝言板</h1>
         <p id="song-title" class="song-title">曲名未設定</p>
       </div>
-      <button id="logout-button" class="text-button hidden">ログアウト</button>
+      <div class="header-actions"><span id="role-badge" class="role-badge hidden"></span><button id="logout-button" class="text-button hidden">ログアウト</button></div>
     </header>
 
     <section id="setup-warning" class="notice hidden"><p>サイトの設定を確認してください。</p></section>
@@ -24,9 +24,11 @@
       <form id="login-form" class="stack">
         <input id="password" type="password" autocomplete="current-password" placeholder="クラスパスワード" required>
         <button type="submit">入る</button>
-        <p id="login-error" class="error" role="alert"></p>
+        <p id="login-error" class="error" role="alert"></p><button id="show-admin-login" class="text-button" type="button">管理者ログイン</button>
       </form>
     </section>
+
+    <section id="admin-login-view" class="login-card hidden"><h2>管理者ログイン</h2><form id="admin-login-form" class="stack"><input id="admin-email" type="email" autocomplete="username" placeholder="管理者メールアドレス" required><input id="admin-password" type="password" autocomplete="current-password" placeholder="管理者パスワード" required><button type="submit">管理者として入る</button><p id="admin-login-error" class="error" role="alert"></p></form><button id="back-to-login" class="text-button" type="button">クラスログインに戻る</button></section>
 
     <section id="app-view" class="hidden">
       <section class="quick-post card">
@@ -59,13 +61,7 @@
         <div id="messages" class="messages"></div>
       </section>
 
-      <details class="settings">
-        <summary>曲名を変更</summary>
-        <form id="song-form" class="inline-form">
-          <input id="song-input" maxlength="200" placeholder="合唱曲名">
-          <button type="submit">保存</button>
-        </form>
-      </details>
+      <section id="admin-panel" class="card admin-panel hidden"><h2>管理者メニュー</h2><form id="site-form" class="stack"><input id="site-input" maxlength="100" placeholder="サイト名"><input id="song-input" maxlength="200" placeholder="合唱曲名"><button type="submit">名前・曲名を保存</button></form></section>
     </section>
   </main>
 
@@ -75,7 +71,7 @@
       <h3 class="message-title"></h3>
       <p class="message-body"></p>
       <button class="load-audio audio-button" type="button">▶ 音声を再生</button>
-      <audio class="message-audio hidden" controls preload="none"></audio>
+      <audio class="message-audio hidden" controls preload="none"></audio><button class="delete-button hidden" type="button">🗑 この伝言を削除</button>
       
     </article>
   </template>
