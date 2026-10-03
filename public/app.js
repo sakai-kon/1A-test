@@ -41,7 +41,7 @@ function showApp(loggedIn) {
   $("#role-badge").classList.toggle("hidden", !loggedIn);
   $("#role-badge").textContent = isAdmin ? "管理者" : "メンバー";
   $("#admin-panel").classList.toggle("hidden", !isAdmin);
-  $(".audio-post").classList.toggle("hidden", !isAdmin);
+  $("#admin-song-upload").classList.toggle("hidden", !isAdmin);
 }
 
 async function user() {
@@ -140,48 +140,82 @@ async function loadMessages(force=false) {
   return messages;
 }
 
-function renderMessages(items) {
-  const root = $("#messages");
+function createMessageCard(item) {
+  const node = $("#message-template").content.cloneNode(true);
+  const article = node.querySelector(".message");
+  const author = node.querySelector(".message-author");
+  const time = node.querySelector(".message-time");
+  const title = node.querySelector(".message-title");
+  const body = node.querySelector(".message-body");
+  const audio = node.querySelector(".message-audio");
+  const play = node.querySelector(".load-audio");
+  const del = node.querySelector(".delete-button");
+
+  author.textContent = item.author || "匿名";
+  time.textContent = formatDate(item.created_at);
+  del.classList.toggle("hidden", !isAdmin);
+  del.onclick = async () => {
+    if (!isAdmin || !confirm("この" + (item.type === "voice" ? "曲" : "伝言") + "を削除しますか？")) return;
+    const { error } = await supabaseClient.from("messages").delete().eq("id", item.id);
+    if (error) throw error;
+    if (item.object_path) await supabaseClient.storage.from(AUDIO_BUCKET).remove([item.object_path]);
+    await loadMessages(true);
+  };
+
+  if (item.type === "voice") {
+    title.textContent = item.title || "曲";
+    body.textContent = [
+      formatDuration(item.duration_ms),
+      item.size_bytes ? (item.size_bytes / 1024 / 1024).toFixed(1) + "MB" : ""
+    ].filter(Boolean).join(" ・ ");
+
+    play.textContent = "▶ 曲を再生";
+    play.onclick = async () => {
+      play.disabled = true;
+      play.textContent = "読み込み中…";
+      try {
+        await signedAudio(audio, item.object_path);
+        audio.classList.remove("hidden");
+        await audio.play();
+      } catch (e) {
+        alert("曲を再生できませんでした。");
+        console.error(e);
+      } finally {
+        play.disabled = false;
+        play.textContent = "▶ 曲を再生";
+      }
+    };
+  } else {
+    title.classList.add("hidden");
+    play.classList.add("hidden");
+    audio.classList.add("hidden");
+    body.textContent = item.body || "";
+  }
+
+  return article;
+}
+
+function renderList(items, selector, emptyText) {
+  const root = $(selector);
   root.replaceChildren();
+
   if (!items.length) {
     const p = document.createElement("p");
-    p.className = "empty"; p.textContent = "まだ伝言はありません。"; root.appendChild(p); return;
+    p.className = "empty";
+    p.textContent = emptyText;
+    root.appendChild(p);
+    return;
   }
-  for (const item of items) {
-    const node = $("#message-template").content.cloneNode(true);
-    const article = node.querySelector(".message");
-    const author = node.querySelector(".message-author");
-    const time = node.querySelector(".message-time");
-    const title = node.querySelector(".message-title");
-    const body = node.querySelector(".message-body");
-    const audio = node.querySelector(".message-audio");
-    const play = node.querySelector(".load-audio");
-    const del = node.querySelector(".delete-button");
-    author.textContent = item.author || "匿名";
-    time.textContent = formatDate(item.created_at);
-    del.classList.toggle("hidden", !isAdmin);
-    del.onclick = async () => {
-      if (!isAdmin || !confirm("この伝言を削除しますか？")) return;
-      const { error } = await supabaseClient.from("messages").delete().eq("id", item.id);
-      if (error) throw error;
-      if (item.object_path) await supabaseClient.storage.from(AUDIO_BUCKET).remove([item.object_path]);
-      await loadMessages(true);
-    };
 
-    if (item.type === "voice") {
-      title.textContent = item.title || "曲";
-      body.textContent = [formatDuration(item.duration_ms), item.size_bytes ? (item.size_bytes/1024/1024).toFixed(1)+"MB" : ""].filter(Boolean).join(" ・ ");
-      play.onclick = async () => {
-        play.disabled = true; play.textContent = "読み込み中…";
-        try { await signedAudio(audio, item.object_path); audio.classList.remove("hidden"); await audio.play(); }
-        catch (e) { alert("曲を再生できませんでした。"); console.error(e); }
-        finally { play.disabled = false; play.textContent = "▶ 音声を再生"; }
-      };
-    } else {
-      title.classList.add("hidden"); play.classList.add("hidden"); audio.classList.add("hidden"); body.textContent = item.body || "";
-    }
-    root.appendChild(article);
-  }
+  for (const item of items) root.appendChild(createMessageCard(item));
+}
+
+function renderMessages(items) {
+  const textMessages = items.filter(item => item.type === "text");
+  const songs = items.filter(item => item.type === "voice");
+
+  renderList(textMessages, "#text-messages", "まだ伝言はありません。");
+  renderList(songs, "#song-messages", "まだ曲はありません。");
 }
 
 function resetVoice() {
