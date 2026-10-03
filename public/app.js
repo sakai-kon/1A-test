@@ -6,7 +6,7 @@ const AUTH_EMAIL = String(CONFIG.AUTH_EMAIL || "");
 const AUDIO_BUCKET = "choir-audio";
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 const MIN_AUDIO_DURATION_MS = 60 * 1000;
-const CACHE_TTL_MS = 60 * 1000;
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const API_READY = /^https:\/\/[^/]+\.supabase\.co$/.test(SUPABASE_URL) && SUPABASE_KEY && AUTH_EMAIL;
 
 const supabaseClient = API_READY ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
@@ -80,13 +80,17 @@ async function requireAdmin() {
 async function loadSettings(force=false) {
   await requireUser();
   const c = cacheRead(CACHE_KEYS.settings);
-  if (c?.data) renderSettings(c.data);
-  if (!force && fresh(c)) return;
+  if (c?.data) {
+    renderSettings(c.data);
+    if (!force && fresh(c)) return c.data;
+  }
+
   const { data, error } = await supabaseClient.from("settings").select("key,value");
   if (error) throw error;
   const s = Object.fromEntries((data || []).map(r => [r.key, r.value]));
   renderSettings(s);
   cacheWrite(CACHE_KEYS.settings, s);
+  return s;
 }
 
 async function signedAudio(audio, path) {
@@ -99,14 +103,19 @@ async function signedAudio(audio, path) {
 async function loadMessages(force=false) {
   await requireUser();
   const c = cacheRead(CACHE_KEYS.messages);
-  if (c?.data) renderMessages(c.data);
-  if (!force && fresh(c)) return;
+  if (c?.data) {
+    renderMessages(c.data);
+    if (!force && fresh(c)) return c.data;
+  }
+
   const { data, error } = await supabaseClient.from("messages")
     .select("id,type,author,title,body,object_path,mime_type,size_bytes,duration_ms,created_at")
     .order("created_at", { ascending:false }).limit(100);
   if (error) throw error;
-  renderMessages(data || []);
-  cacheWrite(CACHE_KEYS.messages, data || []);
+  const messages = data || [];
+  renderMessages(messages);
+  cacheWrite(CACHE_KEYS.messages, messages);
+  return messages;
 }
 
 function renderMessages(items) {
@@ -197,7 +206,18 @@ $("#logout-button").addEventListener("click", async () => {
   await supabaseClient.auth.signOut(); isAdmin = false; showApp(false);
 });
 
-$("#reload-button").addEventListener("click", () => Promise.all([loadSettings(true), loadMessages(true)]).catch(e => alert(e.message)));
+$("#reload-button").addEventListener("click", async () => {
+  try {
+    $("#reload-button").disabled = true;
+    $("#reload-button").textContent = "更新中…";
+    await Promise.all([loadSettings(true), loadMessages(true)]);
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    $("#reload-button").disabled = false;
+    $("#reload-button").textContent = "更新";
+  }
+});
 
 $("#site-form").addEventListener("submit", async e => {
   e.preventDefault();
@@ -226,6 +246,7 @@ $("#message-form").addEventListener("submit", async e => {
     if (error) throw error;
     $("#message-author").value = ""; $("#message-body").value = "";
     await loadMessages(true);
+
   } catch (err) { alert(err.message); }
 });
 
@@ -292,11 +313,52 @@ $("#voice-form").addEventListener("submit", async e => {
   } catch (err) { $("#recording-status").textContent = err.message || "曲の保存に失敗しました。"; }
 });
 
+function cachedMessages() {
+  return cacheRead(CACHE_KEYS.messages)?.data || [];
+}
+
+function applyMessageChange(payload) {
+  const current = cachedMessages();
+  let next = current.slice();
+
+  if (payload.eventType === "INSERT") {
+    const item = payload.new;
+    next = [item, ...next.filter(row => row.id !== item.id)]
+      .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 100);
+  } else if (payload.eventType === "UPDATE") {
+    const item = payload.new;
+    next = next.map(row => row.id === item.id ? item : row);
+    next.sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+  } else if (payload.eventType === "DELETE") {
+    const id = payload.old?.id;
+    if (id) next = next.filter(row => row.id !== id);
+  }
+
+  renderMessages(next);
+  cacheWrite(CACHE_KEYS.messages, next);
+}
+
+function applySettingsChange(payload) {
+  const cached = cacheRead(CACHE_KEYS.settings);
+  const settings = { ...(cached?.data || {}) };
+
+  if (payload.eventType === "DELETE") {
+    delete settings[payload.old?.key];
+  } else {
+    const row = payload.new;
+    if (row?.key) settings[row.key] = row.value;
+  }
+
+  renderSettings(settings);
+  cacheWrite(CACHE_KEYS.settings, settings);
+}
+
 async function subscribeRealtime() {
   if (realtimeChannel) return;
   realtimeChannel = supabaseClient.channel("choir-live")
-    .on("postgres_changes",{event:"*",schema:"public",table:"messages"},()=>loadMessages(true).catch(console.error))
-    .on("postgres_changes",{event:"*",schema:"public",table:"settings"},()=>loadSettings(true).catch(console.error))
+    .on("postgres_changes",{event:"*",schema:"public",table:"messages"},applyMessageChange)
+    .on("postgres_changes",{event:"*",schema:"public",table:"settings"},applySettingsChange)
     .subscribe();
 }
 
