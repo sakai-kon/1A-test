@@ -24,3 +24,4 @@ audio{width:100%}.messages{display:grid;gap:10px}.message{border:1px solid #e4e8
 .inline-form{display:flex;gap:8px;margin-top:10px}.inline-form input{flex:1}
 .notice{padding:12px;background:#fff1f2;color:#9f1239;border-radius:12px;margin-bottom:12px}
 @media(max-width:560px){.container{padding-top:14px}.login-card{margin-top:12vh}.inline-form{flex-direction:column}h1{font-size:1.4rem}}
+.header-actions{display:flex;align-items:center;gap:8px}.role-badge{display:inline-flex;border-radius:999px;padding:.35rem .65rem;background:#eef2ff;color:#263b8f;font-size:.78rem;font-weight:800}.admin-panel{border-color:#b8c4ff;background:#f8f9ff}.delete-button{width:100%;margin-top:8px;background:#b42318}.admin-panel input{margin-top:2px}
