@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f5f7fb">
   <title>1A 合唱伝言板</title>
-  <link rel="stylesheet" href="./styles.css?v=20261003-1500">
+  <link rel="stylesheet" href="./styles.css?v=20261003-1545">
 </head>
 <body>
   <main class="container">
@@ -24,62 +24,25 @@
     <section id="setup-warning" class="notice hidden"><p>サイトの設定を確認してください。</p></section>
 
     <section id="login-view" class="login-card">
-      <div class="login-mark">🎶</div>
-      <p class="section-kicker">1A CLASS BOARD</p>
-      <h2>合唱の連絡場所</h2>
-      <p class="muted login-description">クラスの伝言を確認したり、共有されている曲を聴いたりできます。</p>
+      <h2>1A 合唱伝言板</h2>
       <form id="login-form" class="stack">
         <input id="password" type="password" autocomplete="current-password" placeholder="クラスパスワード" required>
-        <button type="submit">入る</button>
-        <p id="login-error" class="error" role="alert"></p><button id="show-admin-login" class="text-button" type="button">管理者ログイン</button>
+        <button type="submit">ログイン</button>
+        <p id="login-error" class="error" role="alert"></p>
+        <button id="show-admin-login" class="text-button" type="button">管理者ログイン</button>
       </form>
     </section>
 
-    <section id="admin-login-view" class="login-card hidden"><div class="login-mark">🔐</div><p class="section-kicker">ADMIN</p><h2>管理者ログイン</h2><form id="admin-login-form" class="stack"><input id="admin-email" type="email" autocomplete="username" placeholder="管理者メールアドレス" required><input id="admin-password" type="password" autocomplete="current-password" placeholder="管理者パスワード" required><button type="submit">管理者として入る</button><p id="admin-login-error" class="error" role="alert"></p></form><button id="back-to-login" class="text-button" type="button">クラスログインに戻る</button></section>
-
-    <section id="app-view" class="hidden">
-      <nav class="section-nav" aria-label="メインメニュー">
-        <a class="nav-item active" data-target="message-section" href="#message-section">
-          <span class="nav-icon">💬</span><span>伝言</span><span id="message-count" class="count-badge">0</span>
-        </a>
-        <a class="nav-item" data-target="song-section" href="#song-section">
-          <span class="nav-icon">🎵</span><span>曲</span><span id="song-count" class="count-badge">0</span>
-        </a>
-      </nav>
-
-      <section id="message-section" class="content-section">
-        <div class="section-heading-row">
-          <div>
-            <p class="section-kicker">MESSAGE</p>
-            <div class="section-heading-main">
-              <span class="section-icon">💬</span>
-              <div>
-                <h2>伝言</h2>
-                <p class="muted">クラスへの連絡やメモをここに</p>
-              </div>
-            </div>
-          </div>
-          <button id="reload-button" class="text-button" type="button" title="最新状態に更新">更新</button>
-        </div>
-
-        <form id="message-form" class="composer-card">
-          <div class="composer-title">新しい伝言</div>
-          <div class="composer-fields">
-            <input id="message-author" maxlength="40" placeholder="名前（任意）">
-            <textarea id="message-body" maxlength="2000" rows="4" placeholder="例：明日の練習は17時からです"></textarea>
-          </div>
-          <div class="composer-footer">
-            <span class="muted">短い連絡はここに残そう</span>
-            <button type="submit">伝言を投稿</button>
-          </div>
-        </form>
-
-        <div class="list-header">
-          <h3>みんなの伝言</h3>
-          <span id="message-list-label" class="muted">0件</span>
-        </div>
-        <div id="text-messages" class="messages"></div>
-      </section>
+    <section id="admin-login-view" class="login-card hidden">
+      <h2>管理者ログイン</h2>
+      <form id="admin-login-form" class="stack">
+        <input id="admin-email" type="email" autocomplete="username" placeholder="管理者メールアドレス" required>
+        <input id="admin-password" type="password" autocomplete="current-password" placeholder="管理者パスワード" required>
+        <button type="submit">ログイン</button>
+        <p id="admin-login-error" class="error" role="alert"></p>
+      </form>
+      <button id="back-to-login" class="text-button" type="button">クラスログインに戻る</button>
+    </section>
 
       <section id="song-section" class="content-section">
         <div class="section-heading-row">
