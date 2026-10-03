@@ -55,14 +55,28 @@ h1{margin:0;font-size:clamp(1.45rem,4vw,1.9rem);line-height:1.15;letter-spacing:
   background:rgba(255,255,255,.92);backdrop-filter:blur(12px);
   border:1px solid #e0e5ef;border-radius:16px;box-shadow:0 8px 20px rgba(34,45,82,.06)
 }
-.nav-item{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:.72rem .8rem;border-radius:12px;text-decoration:none;color:#697489;font-weight:900;font-size:.9rem}
+.nav-item{display:grid;border:0;appearance:none;width:100%;font:inherit;cursor:pointer;text-align:left;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;padding:.72rem .8rem;border-radius:12px;text-decoration:none;color:#697489;font-weight:900;font-size:.9rem}
 .nav-item:hover{background:#f7f8fc;color:#273a84}
 .nav-item.active{background:#eef2ff;color:var(--primary)}
 .nav-icon{font-size:1rem}
 .count-badge{min-width:22px;padding:.15rem .4rem;border-radius:999px;background:#e9edf7;color:#657087;font-size:.68rem;text-align:center}
 .nav-item.active .count-badge{background:#d9e1ff;color:var(--primary)}
 
-.content-section{scroll-margin-top:74px;margin-bottom:22px}
+.page-view{min-height:calc(100svh - 170px)}
+.page-view.hidden{display:none!important}
+.page-view.active-page{display:block}
+.song-page-head{display:flex;justify-content:space-between;align-items:end;gap:14px;margin:4px 2px 12px}
+.song-page-head h3{margin:0;font-size:.94rem}
+.song-page-head .muted{margin:.2rem 0 0}
+.songs-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px;align-items:stretch}
+.songs-grid .message{min-width:0;display:flex;flex-direction:column;min-height:178px}
+.songs-grid .message-title{font-size:1.02rem;overflow-wrap:anywhere}
+.songs-grid .message-meta{margin-top:7px}
+.songs-grid .audio-button{margin-top:auto}
+.songs-grid .message-audio{width:100%}
+.comments-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:10px}
+.comments-grid .message{min-width:0}
+.comments-grid .message-body{overflow-wrap:anywhere}
 .section-heading-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px}
 .section-kicker{margin:0 0 5px;color:#8c96a8;font-size:.68rem;font-weight:900;letter-spacing:.12em}
 .section-heading-main{display:flex;align-items:center;gap:11px}
@@ -111,6 +125,10 @@ h1{margin:0;font-size:clamp(1.45rem,4vw,1.9rem);line-height:1.15;letter-spacing:
 .site-footer a{color:#6d778a;text-decoration:none}
 .site-footer a:hover{text-decoration:underline}
 
+@media(max-width:700px){
+  .page-view{min-height:calc(100svh - 145px)}
+  .songs-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr))}
+}
 @media(max-width:560px){
   .container{width:min(100% - 20px,780px);padding-top:12px}
   .hero{padding-bottom:14px}
@@ -131,3 +149,8 @@ body:has(#admin-login-view:not(.hidden)) .eyebrow,
 body:has(#admin-login-view:not(.hidden)) .current-song{display:none}
 body:has(#login-view:not(.hidden)) .brand h1,
 body:has(#admin-login-view:not(.hidden)) .brand h1{text-align:center}
+
+#songs-page .section-heading-row{margin-bottom:10px}
+#songs-page .section-icon{background:#f0f4ff}
+#songs-page .message{padding:15px}
+#comments-page .composer-card{margin-bottom:14px}
