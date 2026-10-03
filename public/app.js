@@ -138,12 +138,12 @@ function renderMessages(items) {
     };
 
     if (item.type === "voice") {
-      title.textContent = item.title || "音声伝言";
+      title.textContent = item.title || "曲";
       body.textContent = [formatDuration(item.duration_ms), item.size_bytes ? (item.size_bytes/1024/1024).toFixed(1)+"MB" : ""].filter(Boolean).join(" ・ ");
       play.onclick = async () => {
         play.disabled = true; play.textContent = "読み込み中…";
         try { await signedAudio(audio, item.object_path); audio.classList.remove("hidden"); await audio.play(); }
-        catch (e) { alert("音声を再生できませんでした。"); console.error(e); }
+        catch (e) { alert("曲を再生できませんでした。"); console.error(e); }
         finally { play.disabled = false; play.textContent = "▶ 音声を再生"; }
       };
     } else {
@@ -234,13 +234,13 @@ $("#voice-file").addEventListener("change", async e => {
   const file = e.target.files?.[0];
   if (!file) return resetVoice();
   $("#recording-status").textContent = "";
-  if (!file.type.startsWith("audio/")) return resetVoice(), $("#recording-status").textContent = "音声ファイルを選択してください。";
+  if (!file.type.startsWith("audio/")) return resetVoice(), $("#recording-status").textContent = "曲ファイルを選択してください。";
   if (file.size > MAX_AUDIO_BYTES) return resetVoice(), $("#recording-status").textContent = "10MBを超えているため保存できません。";
   try {
     const url = URL.createObjectURL(file), a = new Audio(); a.preload = "metadata";
     await new Promise((resolve,reject) => { a.onloadedmetadata=resolve; a.onerror=()=>reject(new Error("音声ファイルを読み込めませんでした。")); a.src=url; });
     const durationMs = Math.round(a.duration*1000); URL.revokeObjectURL(url);
-    if (!Number.isFinite(durationMs) || durationMs <= MIN_AUDIO_DURATION_MS) return resetVoice(), $("#recording-status").textContent = "音声は60秒を超えている必要があります。";
+    if (!Number.isFinite(durationMs) || durationMs <= MIN_AUDIO_DURATION_MS) return resetVoice(), $("#recording-status").textContent = "曲は60秒を超えている必要があります。";
     selectedVoiceFile = file;
     $("#recording-preview").src = URL.createObjectURL(file);
     $("#recording-preview").classList.remove("hidden");
@@ -276,20 +276,20 @@ $("#voice-form").addEventListener("submit", async e => {
   try {
     await requireAdmin();
     const durationMs = Number($("#voice-form").dataset.durationMs || 0);
-    if (durationMs <= MIN_AUDIO_DURATION_MS) throw new Error("音声は60秒を超えている必要があります。");
+    if (durationMs <= MIN_AUDIO_DURATION_MS) throw new Error("曲は60秒を超えている必要があります。");
     const id = crypto.randomUUID();
     const ext = (selectedVoiceFile.name.split(".").pop() || "audio").replace(/[^a-z0-9]+/gi,"") || "audio";
     const path = "voices/" + id + "." + ext;
     await uploadVoice(selectedVoiceFile, path);
     const { error } = await supabaseClient.from("messages").insert({
       id,type:"voice",author:$("#voice-author").value.trim() || "管理者",
-      title:$("#voice-title").value.trim() || "音声伝言",body:"",
+      title:$("#voice-title").value.trim() || "曲",body:"",
       object_path:path,mime_type:selectedVoiceFile.type || "application/octet-stream",
       size_bytes:selectedVoiceFile.size,duration_ms:durationMs,user_id:(await requireAdmin()).id
     });
     if (error) { await supabaseClient.storage.from(AUDIO_BUCKET).remove([path]); throw error; }
-    resetVoice(); $("#recording-status").textContent="音声を保存しました。"; await loadMessages(true);
-  } catch (err) { $("#recording-status").textContent = err.message || "音声の保存に失敗しました。"; }
+    resetVoice(); $("#recording-status").textContent="曲を保存しました。"; await loadMessages(true);
+  } catch (err) { $("#recording-status").textContent = err.message || "曲の保存に失敗しました。"; }
 });
 
 async function subscribeRealtime() {
