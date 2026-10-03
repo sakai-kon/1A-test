@@ -52,10 +52,14 @@
     <section id="app-view" class="hidden">
       <nav class="section-nav" aria-label="メインメニュー">
         <button class="nav-item active" data-page="comments-page" type="button">
-          <span class="nav-icon">💬</span><span>コメント</span><span id="message-count" class="count-badge">0</span>
+          <span class="nav-icon">💬</span>
+          <span>コメント</span>
+          <span id="message-count" class="count-badge">0</span>
         </button>
         <button class="nav-item" data-page="songs-page" type="button">
-          <span class="nav-icon">🎵</span><span>曲</span><span id="song-count" class="count-badge">0</span>
+          <span class="nav-icon">🎵</span>
+          <span>曲</span>
+          <span id="song-count" class="count-badge">0</span>
         </button>
       </nav>
 
@@ -96,46 +100,12 @@
       <section id="songs-page" class="page-view">
         <div class="section-heading-row">
           <div>
-            <p class="section-kicker">MESSAGE</p>
-            <div class="section-heading-main">
-              <span class="section-icon">💬</span>
-              <div>
-                <h2>伝言</h2>
-                <p class="muted">クラスへの連絡やメモをここに</p>
-              </div>
-            </div>
-          </div>
-          <button id="reload-button" class="text-button" type="button" title="最新状態に更新">更新</button>
-        </div>
-
-        <form id="message-form" class="composer-card">
-          <div class="composer-title">新しい伝言</div>
-          <div class="composer-fields">
-            <input id="message-author" maxlength="40" placeholder="名前（任意）">
-            <textarea id="message-body" maxlength="2000" rows="4" placeholder="例：明日の練習は17時からです"></textarea>
-          </div>
-          <div class="composer-footer">
-            <span class="muted">短い連絡はここに残そう</span>
-            <button type="submit">伝言を投稿</button>
-          </div>
-        </form>
-
-        <div class="list-header">
-          <h3>みんなの伝言</h3>
-          <span id="message-list-label" class="muted">0件</span>
-        </div>
-        <div id="text-messages" class="messages"></div>
-      </section>
-
-      <section id="song-section" class="content-section">
-        <div class="section-heading-row">
-          <div>
             <p class="section-kicker">SONG</p>
             <div class="section-heading-main">
               <span class="section-icon">🎵</span>
               <div>
                 <h2>曲</h2>
-                <p class="muted">クラスで共有している曲を聴けます</p>
+                <p class="muted">画面幅に合わせて自動で敷き詰めます</p>
               </div>
             </div>
           </div>
@@ -159,7 +129,7 @@
         <div class="song-page-head">
           <div>
             <h3>共有中の曲</h3>
-            <p class="muted">画面幅に合わせて自動で並びます</p>
+            <p class="muted">スマホでは1〜2列、広い画面では自動で列数を増やします</p>
           </div>
           <span id="song-list-label" class="muted">0曲</span>
         </div>
@@ -181,6 +151,7 @@
         </form>
       </section>
     </section>
+
   </main>
 
   <footer class="site-footer">
