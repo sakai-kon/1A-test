@@ -38,9 +38,12 @@ h1{margin:0;font-size:clamp(1.45rem,4vw,1.9rem);line-height:1.15;letter-spacing:
 .text-button{background:#fff;color:#556176;border:1px solid #d9dfeb;padding:.55rem .75rem;font-size:.84rem}
 .text-button:hover{background:#f7f8fc}
 
-.card,.login-card{background:var(--card);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow)}
-.login-card{padding:24px;margin:12vh auto 0;width:min(430px,100%)}
-.login-card h2{margin:0 0 14px;font-size:1.12rem}
+.card,.login-card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}
+.login-card{padding:22px;margin:16vh auto 0;width:min(360px,100%)}
+.login-card h2{margin:0 0 18px;font-size:1.08rem;text-align:center}
+.login-card .error{min-height:0;text-align:center}
+.login-card .text-button{justify-self:center;border-color:transparent;background:transparent;padding:.25rem .5rem}
+.login-card .text-button:hover{background:#f7f8fc}
 .stack{display:grid;gap:10px}
 .error{color:#c33c4f;min-height:1.2em;margin:0;font-size:.88rem}
 .notice{padding:12px 14px;background:#fff1f3;color:#9f1239;border:1px solid #f2cbd2;border-radius:14px;margin-bottom:12px}
@@ -119,5 +122,3 @@ h1{margin:0;font-size:clamp(1.45rem,4vw,1.9rem);line-height:1.15;letter-spacing:
   .message-head time{font-size:.72rem}
 }
 
-.login-mark{display:grid;place-items:center;width:54px;height:54px;border-radius:16px;background:#eef2ff;font-size:1.5rem;margin-bottom:12px}
-.login-description{margin:0 0 16px}
