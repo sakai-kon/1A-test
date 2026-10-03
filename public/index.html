@@ -24,7 +24,10 @@
     <section id="setup-warning" class="notice hidden"><p>サイトの設定を確認してください。</p></section>
 
     <section id="login-view" class="login-card">
-      <h2>1A 合唱伝言板</h2>
+      <div class="login-mark">🎶</div>
+      <p class="section-kicker">1A CLASS BOARD</p>
+      <h2>合唱の連絡場所</h2>
+      <p class="muted login-description">クラスの伝言を確認したり、共有されている曲を聴いたりできます。</p>
       <form id="login-form" class="stack">
         <input id="password" type="password" autocomplete="current-password" placeholder="クラスパスワード" required>
         <button type="submit">入る</button>
@@ -32,7 +35,7 @@
       </form>
     </section>
 
-    <section id="admin-login-view" class="login-card hidden"><h2>管理者ログイン</h2><form id="admin-login-form" class="stack"><input id="admin-email" type="email" autocomplete="username" placeholder="管理者メールアドレス" required><input id="admin-password" type="password" autocomplete="current-password" placeholder="管理者パスワード" required><button type="submit">管理者として入る</button><p id="admin-login-error" class="error" role="alert"></p></form><button id="back-to-login" class="text-button" type="button">クラスログインに戻る</button></section>
+    <section id="admin-login-view" class="login-card hidden"><div class="login-mark">🔐</div><p class="section-kicker">ADMIN</p><h2>管理者ログイン</h2><form id="admin-login-form" class="stack"><input id="admin-email" type="email" autocomplete="username" placeholder="管理者メールアドレス" required><input id="admin-password" type="password" autocomplete="current-password" placeholder="管理者パスワード" required><button type="submit">管理者として入る</button><p id="admin-login-error" class="error" role="alert"></p></form><button id="back-to-login" class="text-button" type="button">クラスログインに戻る</button></section>
 
     <section id="app-view" class="hidden">
       <nav class="section-nav" aria-label="メインメニュー">
@@ -138,7 +141,7 @@
 
   <template id="message-template">
     <article class="message">
-      <div class="message-head"><strong class="message-author"></strong><time class="message-time"></time></div>
+      <div class="message-head"><span class="message-type"></span><strong class="message-author"></strong><time class="message-time"></time></div>
       <h3 class="message-title"></h3>
       <p class="message-body"></p>
       <button class="load-audio audio-button" type="button">▶ 曲を再生</button>
