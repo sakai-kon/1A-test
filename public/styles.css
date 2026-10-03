@@ -118,3 +118,6 @@ h1{margin:0;font-size:clamp(1.45rem,4vw,1.9rem);line-height:1.15;letter-spacing:
   .composer-footer button{width:100%}
   .message-head time{font-size:.72rem}
 }
+
+.login-mark{display:grid;place-items:center;width:54px;height:54px;border-radius:16px;background:#eef2ff;font-size:1.5rem;margin-bottom:12px}
+.login-description{margin:0 0 16px}
