@@ -145,12 +145,16 @@ function createMessageCard(item) {
   const article = node.querySelector(".message");
   const author = node.querySelector(".message-author");
   const time = node.querySelector(".message-time");
+  const type = node.querySelector(".message-type");
   const title = node.querySelector(".message-title");
   const body = node.querySelector(".message-body");
   const audio = node.querySelector(".message-audio");
   const play = node.querySelector(".load-audio");
   const del = node.querySelector(".delete-button");
 
+  const isSong = item.type === "voice";
+  article.classList.toggle("message-song", isSong);
+  type.textContent = isSong ? "曲" : "伝言";
   author.textContent = item.author || "匿名";
   time.textContent = formatDate(item.created_at);
   del.classList.toggle("hidden", !isAdmin);
@@ -164,10 +168,14 @@ function createMessageCard(item) {
 
   if (item.type === "voice") {
     title.textContent = item.title || "曲";
-    body.textContent = [
+    body.textContent = "";
+    const meta = document.createElement("div");
+    meta.className = "message-meta";
+    meta.textContent = [
       formatDuration(item.duration_ms),
       item.size_bytes ? (item.size_bytes / 1024 / 1024).toFixed(1) + "MB" : ""
     ].filter(Boolean).join(" ・ ");
+    title.after(meta);
 
     play.textContent = "▶ 曲を再生";
     play.onclick = async () => {
@@ -216,6 +224,30 @@ function renderMessages(items) {
 
   renderList(textMessages, "#text-messages", "まだ伝言はありません。");
   renderList(songs, "#song-messages", "まだ曲はありません。");
+
+  $("#message-count").textContent = String(textMessages.length);
+  $("#song-count").textContent = String(songs.length);
+  $("#message-list-label").textContent = textMessages.length + "件";
+  $("#song-list-label").textContent = songs.length + "曲";
+}
+
+function setupSectionNavigation() {
+  const links = [...document.querySelectorAll(".nav-item[data-target]")];
+  const sections = links.map(link => document.getElementById(link.dataset.target)).filter(Boolean);
+  if (!sections.length || !("IntersectionObserver" in window)) return;
+
+  const setActive = id => {
+    links.forEach(link => link.classList.toggle("active", link.dataset.target === id));
+  };
+
+  const observer = new IntersectionObserver(entries => {
+    const visible = entries
+      .filter(entry => entry.isIntersecting)
+      .sort((a,b) => b.intersectionRatio - a.intersectionRatio)[0];
+    if (visible) setActive(visible.target.id);
+  }, { rootMargin:"-25% 0px -55% 0px", threshold:[0.1,0.3,0.6] });
+
+  sections.forEach(section => observer.observe(section));
 }
 
 function resetVoice() {
@@ -427,6 +459,7 @@ async function initialize() {
     await refreshRole();
     await Promise.all([loadSettings(), loadMessages()]);
     showApp(true);
+    setupSectionNavigation();
     await subscribeRealtime();
   } catch (err) { console.error(err); showApp(false); }
 }
