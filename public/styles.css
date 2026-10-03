@@ -25,3 +25,16 @@ audio{width:100%}.messages{display:grid;gap:10px}.message{border:1px solid #e4e8
 .notice{padding:12px;background:#fff1f2;color:#9f1239;border-radius:12px;margin-bottom:12px}
 @media(max-width:560px){.container{padding-top:14px}.login-card{margin-top:12vh}.inline-form{flex-direction:column}h1{font-size:1.4rem}}
 .header-actions{display:flex;align-items:center;gap:8px}.role-badge{display:inline-flex;border-radius:999px;padding:.35rem .65rem;background:#eef2ff;color:#263b8f;font-size:.78rem;font-weight:800}.admin-panel{border-color:#b8c4ff;background:#f8f9ff}.delete-button{width:100%;margin-top:8px;background:#b42318}.admin-panel input{margin-top:2px}
+.section-nav{display:grid;grid-template-columns:1fr 1fr;gap:8px;position:sticky;top:8px;z-index:5;background:rgba(255,255,255,.94);backdrop-filter:blur(8px)}
+.section-nav a{display:flex;justify-content:center;align-items:center;padding:.75rem;border:1px solid #dfe4ee;border-radius:12px;color:#263b8f;text-decoration:none;font-weight:800;background:#fff}
+.content-section{scroll-margin-top:18px}
+.section-title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
+.section-title>div:first-child{display:flex;align-items:center;gap:10px}
+.section-title h2{margin:0}
+.section-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#f1f4ff;font-size:1.3rem}
+.message-composer{padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid #e7eaf1}
+.song-upload{padding:13px;margin-bottom:14px;border:1px dashed #cdd5e8;border-radius:14px;background:#fafbff}
+.song-upload h3{margin:0 0 8px}
+.site-footer{width:min(720px,calc(100% - 24px));margin:0 auto;padding:0 0 28px;text-align:center}
+.site-footer a{color:#6a7488;text-decoration:none;font-size:.88rem}
+@media(max-width:560px){.section-nav{top:4px}}
