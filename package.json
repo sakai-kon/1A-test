@@ -1,0 +1,13 @@
+{
+  "name": "1a-choir-board",
+  "version": "1.0.0",
+  "private": true,
+  "description": "1A 合唱伝言板 - クラスで使う合唱の伝言・曲共有サイト",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/app.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}
